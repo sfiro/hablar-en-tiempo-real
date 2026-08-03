@@ -1,323 +1,186 @@
-# Plan de desarrollo — v2.0.0 Análisis de sentimientos
+# Plan de desarrollo — v2.0.0 Análisis de emociones
+
+**Corrección respecto a la versión anterior de este documento:** la primera versión
+prometía 10 emociones (alegría, tristeza, rabia, miedo, sorpresa, asco, confianza,
+empatía, esperanza, optimismo) y varios modelos intercambiables de Hugging Face. Al
+verificar contra la documentación real de los modelos, ninguno de los candidatos
+clasifica más de las seis emociones de Ekman + neutral, y el modelo que se había puesto
+por defecto (`bert-base-multilingual-uncased-sentiment`) en realidad da una puntuación
+de 1 a 5 estrellas de opinión de producto, no una emoción. Este documento refleja ahora
+lo que el código hace de verdad.
 
 ---
 
-## Hito 1: Análisis básico 🔄 (en progreso)
+## Hito 1: Análisis básico ✅ (completo y verificado)
 
-**Objetivo:** Motor de análisis funcional integrado con v1
+**Objetivo:** Motor de análisis funcional integrado con v1, sin bloquear el audio.
 
-### Tarea 1.1: Crear `sentiment_analyzer.py`
+### Tarea 1.1: `sentiment_analyzer.py` — DONE
 
-**Qué:** Módulo independiente que clasifica emociones
+Usa [`pysentimiento`](https://github.com/pysentimiento/pysentimiento), que trae un
+modelo de emociones real por idioma (RoBERTuito para español, entrenado con el corpus
+TASS 2020 Task 2). Confirmado contra la documentación del modelo:
+
+- **Etiquetas:** `joy`, `sadness`, `anger`, `fear`, `surprise`, `disgust`, `others`
+- **API:** `create_analyzer(task="emotion", lang="es").predict(texto)` →
+  `AnalyzerOutput(output="joy", probas={"joy": 0.72, "others": 0.19, ...})`
+- **Idiomas soportados:** es, en, it, pt (cada uno con su propio modelo)
 
 ```python
 from sentiment_analyzer import SentimentAnalyzer
-
-analyzer = SentimentAnalyzer(model="bert-base-multilingual-uncased-sentiment")
-
-result = analyzer.analyze("Me siento increíble hoy")
-# Resultado: {
-#   "emotion": "joy",
-#   "label": "ALEGRÍA",
-#   "confidence": 0.94,
-#   "emoji": "😊"
-# }
+analyzer = SentimentAnalyzer(language="es")
+analyzer.analyze("Estoy muy feliz hoy")
+# {"emotion": "joy", "label": "ALEGRÍA", "confidence": 0.94, "emoji": "😊"}
 ```
 
-**Características:**
-- [ ] Carga modelo `transformers` lazy (solo cuando se necesita)
-- [ ] Soporta múltiples idiomas
-- [ ] Retorna: emoción, etiqueta, confianza, emoji
-- [ ] Caché de resultados para evitar recomputar
+Características implementadas:
+- [x] Carga del modelo lazy (solo al primer `analyze()`, o precargado en background)
+- [x] Caché de resultados por texto exacto
+- [x] Manejo de error si `pysentimiento` no está instalado (mensaje claro, no traceback)
 
-**Modelo seleccionado:** `bert-base-multilingual-uncased-sentiment`  
-**Instalación:** agregado a `requirements.txt`
+### Tarea 1.2: Integración en `realtime_voice.py` — DONE
 
-### Tarea 1.2: Integrar en realtime_voice.py
+- [x] Transcripción del usuario (`conversation.item.input_audio_transcription.completed`)
+      se analiza completa en cuanto llega
+- [x] Transcripción del asistente se acumula por deltas
+      (`response.output_audio_transcript.delta`) y se analiza completa al terminar
+      la frase (`response.output_audio_transcript.done`)
+- [x] El análisis corre en `run_in_executor` + `asyncio.create_task`: la inferencia
+      (cientos de ms) nunca bloquea `receiver()`, que sigue leyendo deltas de audio
+      mientras se calcula la emoción de la frase anterior
+- [x] Precarga del modelo en background al arrancar, para no pagar el coste de
+      descarga/carga en la primera frase de la conversación
 
-**Qué:** Procesar transcripción en tiempo real
+**Verificado con ejecución real (no solo `py_compile`):**
+- Conecta a la API, precarga el modelo en background sin bloquear el saludo inicial
+- El análisis de una frase no retrasa el streaming de audio de la frase siguiente
+- `--stats` imprime el resumen correcto al terminar (Ctrl+C)
 
-```python
-# En receiver(), cuando llega "response.output_audio_transcript.delta"
-if args.sentiment:
-    emotion = analyzer.analyze(transcript_delta)
-    print_emotion(emotion)
+**Dos bugs reales encontrados y corregidos en esta verificación:**
+1. `asyncio.create_task(loop.run_in_executor(...))` fallaba con `TypeError`:
+   `run_in_executor` devuelve un `Future`, no una corrutina. `create_task` exige lo
+   segundo. Arreglo: llamar a `run_in_executor` directamente, sin envolver.
+2. El resultado de la emoción se imprimía sin salto de línea inicial, así que si
+   llegaba mientras el otro lado seguía en pleno streaming de su transcripción, el
+   resultado aparecía en medio de esa frase. Arreglo: `\n` inicial, como el resto de
+   avisos asíncronos del script.
+
+**Pendiente:** la ejecución de prueba capturó ruido ambiente del micro (no había
+nadie hablando a propósito), así que falta una conversación real deliberada para
+confirmar que las emociones mostradas tienen sentido con frases reales dichas en voz
+alta, no solo con texto de prueba.
+
+### Tarea 1.3: Visualización en consola — DONE
+
+```
+🗣️  Tú: Estoy muy feliz hoy
+   😊 ALEGRÍA (0.94)
 ```
 
-**Cambios:**
-- [ ] Importar `SentimentAnalyzer`
-- [ ] Crear instancia si `--sentiment` está activo
-- [ ] Analizar cada delta de transcripción (tuyo y del asistente)
-- [ ] Mostrar emoción sin bloquear audio
-
-**Criterio:** No debe añadir latencia > 100ms
-
-### Tarea 1.3: Visualización en consola
-
-**Qué:** Formato claro de salida
-
-```
-🗣️ Tú: Estoy muy feliz
-   📊 ALEGRÍA (0.92)
-
-😊 Asistente: ¡Qué bueno!
-   📊 ALEGRÍA (0.88)
-```
-
-**Cambios:**
-- [ ] Función `print_emotion(emotion_dict)`
-- [ ] Mapeo emoji ↔ emoción en `config/emotions.yaml`
-- [ ] Formato: `emoji ETIQUETA (confianza)`
-- [ ] Colores opcionales (si terminal lo soporta)
+- [x] Formato `emoji ETIQUETA (confianza)` bajo cada frase
+- [x] `--no-emoji` para salida solo texto
+- [x] `--confidence-threshold` (por defecto 0.5) para no mostrar clasificaciones dudosas
 
 ---
 
-## Hito 2: Refinamiento 📋 (próximo)
+## Hito 2: Validación y refinamiento 🔄 (en progreso)
 
-**Objetivo:** Precisión, filtrado y validación
+**Objetivo:** Confirmar que funciona con audio real y ajustar parámetros con datos reales.
 
-### Tarea 2.1: Filtro de confianza
+### Tarea 2.1: Prueba con conversación real hablada
+
+- [ ] Conversación de 5+ minutos con `--sentiment --debug`, hablando frases a propósito
+- [ ] Confirmar que las emociones mostradas coinciden con lo dicho, para varios casos
+      obvios (alegría clara, tristeza clara, neutral)
+- [ ] Medir latencia real: tiempo entre "termina la frase" y "aparece la emoción"
+
+**Estado:** se hizo una ejecución real de extremo a extremo (conecta, no bloquea audio,
+`--stats` funciona), pero sin nadie hablando a propósito — el micro capturó ruido
+ambiente. Falta repetir con frases deliberadas para validar precisión percibida.
+
+**Criterio de éxito:** la emoción aparece en menos de 1 segundo tras terminar la frase,
+y acierta en los casos claros (no hace falta que acierte en matices ambiguos).
+
+### Tarea 2.2: Ajustar el umbral de confianza
+
+- [x] Datos reales obtenidos (ver «Limitaciones conocidas» en README-v2.md): con
+      texto de prueba, "el cielo es azul" dio ALEGRÍA (0.57) — pasa el umbral de 0.5
+      siendo un falso positivo, y "me da mucha rabia esto" dio TRISTEZA (0.38) — queda
+      oculto por baja confianza, ocultando también el error de fondo (era RABIA)
+- [ ] Con más datos de conversación hablada, decidir si 0.5 sigue siendo razonable o
+      conviene subirlo (a costa de ocultar más clasificaciones, aciertos incluidos)
+
+### Tarea 2.3: Tests unitarios — DONE
+
+`tests/test_sentiment.py`, dos grupos:
+- **Lógica interna** (caché, validación de idioma, texto vacío, mapeo de emociones):
+  con un analizador falso inyectado, no necesitan el modelo real. 8 tests, todos pasan.
+- **Integración con el modelo real** (`@requiere_modelo_real`, se saltan si falta
+  `pysentimiento`): 3 casos obvios (alegría, tristeza, miedo). Los 3 pasan contra el
+  modelo real descargado.
 
 ```bash
-python realtime_voice.py --sentiment --confidence-threshold 0.7
-# Solo muestra emociones con confianza >= 0.7
+python -m pip install -r requirements-dev.txt
+python -m pytest tests/test_sentiment.py -v
 ```
 
-**Cambios:**
-- [ ] Argumento `--confidence-threshold` (por defecto 0.5)
-- [ ] Comparar `emotion.confidence >= threshold` antes de mostrar
-- [ ] Opción `--show-all` para ver todo sin filtro
-
-**Criterio:** Evitar falsos positivos sin perder información útil
-
-### Tarea 2.2: Manejo de idiomas
-
-**Qué:** Detectar idioma automáticamente
-
-```python
-# El modelo ya soporta 100+ idiomas
-# Pero si quieres especificar:
-python realtime_voice.py --sentiment --language es
-```
-
-**Cambios:**
-- [ ] Detectar idioma de transcripción (langdetect o similar)
-- [ ] Opción `--language` para forzar idioma
-- [ ] Mostrar idioma detectado si `--debug`
-
-### Tarea 2.3: Mapeo de emociones
-
-**Qué:** `config/emotions.yaml`
-
-```yaml
-joy:
-  label: ALEGRÍA
-  emoji: 😊
-  color: yellow
-  synonyms: ["felicidad", "dicha", "contento"]
-
-sadness:
-  label: TRISTEZA
-  emoji: 😢
-  color: blue
-  synonyms: ["pena", "depresión", "melancolía"]
-
-# ... 8 emociones principales
-```
-
-**Cambios:**
-- [ ] Crear archivo YAML con mapeo
-- [ ] Cargar en startup
-- [ ] Usar para traducción y visualización
-
-### Tarea 2.4: Tests unitarios
-
-**Qué:** `tests/test_sentiment.py`
-
-```python
-def test_joy_detection():
-    analyzer = SentimentAnalyzer()
-    result = analyzer.analyze("I'm so happy!")
-    assert result["emotion"] == "joy"
-    assert result["confidence"] > 0.8
-
-def test_sadness_detection():
-    analyzer = SentimentAnalyzer()
-    result = analyzer.analyze("Estoy muy triste")
-    assert result["emotion"] == "sadness"
-    assert result["confidence"] > 0.7
-
-# ... tests de:
-# - Ambigüedad
-# - Idiomas múltiples
-# - Textos cortos vs largos
-# - Confianza
-```
-
-**Criterios:**
-- [ ] Cobertura >= 80%
-- [ ] Tests pasan en macOS y Linux
-- [ ] Performance: < 100ms por análisis
+**Criterio:** casos obvios (uno por emoción) clasifican correctamente. No se testea
+precisión estadística fina, solo que el pipeline funciona de extremo a extremo.
+**Cumplido** para joy, sadness, fear. Pendiente ampliar a anger, surprise, disgust
+(los primeros intentos con esas frases dieron resultados dudosos, ver limitaciones).
 
 ---
 
-## Hito 3: Visualización avanzada 📋 (próximo)
+## Hito 3: Documentación 📋 (próximo)
 
-**Objetivo:** Estadísticas y análisis más ricos
+### Tarea 3.1: Ejemplos reales por emoción
 
-### Tarea 3.1: Estadísticas de conversación
+Reemplazar los ejemplos inventados de README-v2.md por frases probadas de verdad
+contra el modelo, con la confianza real obtenida (no una que suene bien).
 
-```bash
-python realtime_voice.py --sentiment --stats
-```
+### Tarea 3.2: Troubleshooting
 
-**Salida al finalizar:**
-```
-📊 ESTADÍSTICAS
-─────────────────────
-Emociones tuyas:
-  ALEGRÍA: 5 turnos (promedio 0.87)
-  CONFIANZA: 2 turnos (promedio 0.79)
-  
-Emociones del asistente:
-  EMPATÍA: 4 turnos (promedio 0.83)
-  ALEGRÍA: 3 turnos (promedio 0.90)
-  
-Tono general: POSITIVO 😊
-```
+`TROUBLESHOOTING-v2.md` con al menos:
 
-**Cambios:**
-- [ ] Clase `ConversationStats` para acumular emociones
-- [ ] Método `summarize()` que retorna resumen
-- [ ] Mostrar al terminar o con `--export-stats`
-
-### Tarea 3.2: Exportar a JSON
-
-```bash
-python realtime_voice.py --sentiment --export-stats stats.json
-```
-
-**Formato:**
-```json
-{
-  "start_time": "2026-08-03T15:30:00",
-  "end_time": "2026-08-03T15:45:30",
-  "duration_seconds": 930,
-  "user_emotions": [
-    {"timestamp": 5.2, "text": "Hola", "emotion": "joy", "confidence": 0.91},
-    {"timestamp": 12.5, "text": "Gracias", "emotion": "gratitude", "confidence": 0.85}
-  ],
-  "assistant_emotions": [...],
-  "summary": { "overall_tone": "positive", ... }
-}
-```
-
-### Tarea 3.3: Gráficos ASCII (opcional)
-
-```bash
-python realtime_voice.py --sentiment --chart
-```
-
-Salida:
-```
-Emociones en el tiempo:
-Alegría     ████████░░ 80%
-Tristeza    ░░░░░░░░░░  0%
-Confianza   █████░░░░░ 50%
-Esperanza   ██████░░░░ 60%
-```
+- **Instalación de `pysentimiento` falla o tarda mucho** → es normal, trae torch y
+  transformers; en máquinas lentas puede tardar varios minutos
+- **La emoción no aparece** → confianza por debajo del umbral; bajar
+  `--confidence-threshold` o mirar con `--debug`
+- **Latencia alta en la clasificación** → normal en CPU sin GPU; considerar si merece
+  la pena frente al beneficio, documentar tiempos medidos reales
 
 ---
 
-## Hito 4: Documentación 📋 (próximo)
+## Fuera de alcance (por ahora)
 
-### Tarea 4.1: INSTALL-v2.md
+Estas ideas estaban en la versión anterior de este plan y se descartan hasta que haya
+una necesidad concreta, para no acumular trabajo especulativo:
 
-```markdown
-# Instalación — v2.0 Análisis de sentimientos
-
-## Requisitos
-- Python 3.9+
-- GPU opcional (detecta automáticamente si está disponible)
-
-## Instalación rápida
-```
-
-### Tarea 4.2: Ejemplos de emociones
-
-Documento: `EMOTIONS.md`
-
-```markdown
-# Emociones soportadas
-
-## ALEGRÍA 😊
-Ejemplos: "Estoy muy feliz", "Qué genial", "Me encanta"
-Confianza típica: 0.85-0.95
-
-## TRISTEZA 😢
-Ejemplos: "Estoy triste", "No me siento bien", "Deprimido"
-Confianza típica: 0.80-0.92
-
-...
-```
-
-### Tarea 4.3: Troubleshooting
-
-`TROUBLESHOOTING.md`
-
-**P: Las emociones no se detectan**  
-A: Prueba con `--debug` para ver confianza. Si < 0.5, sube `--confidence-threshold`.
-
-**P: Muy lento, latencia de 2+ segundos**  
-A: Usa GPU (`torch` con CUDA). O cambia a modelo más pequeño: `--sentiment-model distilbert`.
-
----
-
-## Modelos disponibles
-
-### Recomendado: `bert-base-multilingual-uncased-sentiment`
-- **Idiomas:** 100+
-- **Tamaño:** 600MB
-- **Velocidad:** ~200ms por frase
-- **Precisión:** ⭐⭐⭐⭐
-
-### Ligero: `distilbert-base-uncased-finetuned-sst-2-english`
-- **Idiomas:** Inglés principalmente
-- **Tamaño:** 268MB
-- **Velocidad:** ~50ms por frase
-- **Precisión:** ⭐⭐⭐
-
-### Modelos personalizados
-```bash
-python realtime_voice.py --sentiment --sentiment-model "ruc/bert-base-spanish-wwm-cased-finetuned-sentiment"
-```
-
----
-
-## Timeline
-
-| Semana | Hito | Estado |
-|--------|------|--------|
-| 1 | Hito 1: Análisis básico | 🔄 En progreso |
-| 2 | Hito 2: Refinamiento | 📋 Próximo |
-| 3 | Hito 3: Visualización | 📋 Próximo |
-| 4 | Hito 4: Documentación | 📋 Próximo |
-| **Semana 5** | **v2.0.0 lanzada** | 🚀 Meta |
+- Exportar a JSON — útil, pero no bloquea nada; se añade si hace falta
+- Gráficos ASCII de emociones en el tiempo — cosmético, baja prioridad
+- Detección de idioma automática — `--language` ya cubre el caso de uso real (tú
+  hablando en un idioma fijo por sesión)
 
 ---
 
 ## Definición de listo
 
-v2.0.0 está **lista para release** cuando:
+v2.0.0 está lista para release cuando:
 
-1. ✅ Detecta emociones en tiempo real sin latencia > 200ms
-2. ✅ Soporta 50+ idiomas (vía modelo multilingual)
+1. ✅ Detecta las 6 emociones de Ekman + neutral en español (y opcionalmente en, it, pt)
+2. ✅ No añade latencia perceptible al audio (verificado: análisis en hilo aparte,
+   confirmado en ejecución real contra la API)
 3. ✅ Funciona igual que v1 si no usas `--sentiment`
-4. ✅ Documentación con ejemplos de cada emoción
-5. ✅ Tests unitarios con cobertura >= 80%
-6. ✅ Validada en macOS con conversaciones reales
+4. ✅ Tests de integración pasan para 3 de los 6 casos obvios (joy, sadness, fear)
+5. ✅ Documentación con ejemplos reales, no inventados (incluye limitaciones reales)
+6. [ ] Validado con conversación real hablada a propósito, no solo ruido ambiente ni
+   texto de prueba
+7. [ ] Tests ampliados a los 3 casos restantes (anger, surprise, disgust) — los
+   primeros intentos con esas frases dieron resultados de confianza dudosa, ver
+   «Limitaciones conocidas» en README-v2.md
 
 ---
 
-**Última actualización:** Agosto 3, 2026  
-**Estado actual:** Iniciando Hito 1
+**Última actualización:** Agosto 3, 2026
+**Estado actual:** Hito 1 completo y verificado en ejecución real. Hito 2 en progreso:
+faltan las tareas marcadas arriba, todas dependientes de una conversación hablada real.

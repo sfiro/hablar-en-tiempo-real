@@ -1,4 +1,4 @@
-# Instalación — v2.0 Análisis de sentimientos
+# Instalación — v2.0 Análisis de emociones
 
 Guía rápida para instalar y ejecutar v2 en macOS.
 
@@ -7,188 +7,155 @@ Guía rápida para instalar y ejecutar v2 en macOS.
 - Python 3.9+ (mismo que v1)
 - Una clave de OpenAI con acceso a Realtime API
 - Micrófono y altavoces (o auriculares)
-- Espacio en disco: ~1.5GB (para modelos de transformers)
-- RAM: 4GB+ (8GB recomendado)
+- Espacio en disco: ~2GB (para `torch` + `transformers`, dependencias de `pysentimiento`)
+- Conexión a internet estable para la instalación y para la primera descarga del modelo
 
 ## Instalación
 
-### 1. Preparar v2
+### 1. Entorno virtual
 
 ```bash
-cd "/Users/debbie/Desktop/programacion/Hablar en tiempo real"
-# v2 está en git como rama/carpeta
 cd v2
-```
-
-### 2. Crear entorno virtual
-
-```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3. Instalar dependencias
+### 2. Instalar dependencias
 
 ```bash
 pip install -r requirements.txt
 ```
 
-**Qué se instala:**
-- `websockets`, `sounddevice`, `numpy` (igual que v1)
-- `transformers` (modelos de IA)
-- `torch` (motor de inferencia)
-- `certifi` (TLS)
+**Esto tarda.** `pysentimiento` trae `torch` y `transformers` como dependencias, que
+suman varios cientos de MB de descarga. En una conexión normal, cuenta con varios
+minutos. Es un paso que solo se paga una vez.
 
-**Primera vez:** Descarga de modelos (~600MB), tarda 2-3 minutos.
-
-### 4. Configurar clave de OpenAI
+### 3. Configurar clave de OpenAI
 
 ```bash
 cp .env.example .env
-# Edita .env con tu clave real
+# Edita .env con tu clave real: OPENAI_API_KEY="sk-..."
 ```
 
 ## Uso
 
-### Básico — Con análisis de sentimientos
+### Con análisis de emociones
 
 ```bash
 python realtime_voice.py --sentiment
 ```
 
-Ejemplo de salida:
+La **primera vez**, al hablar la primera frase, el script descarga el modelo de
+emociones en español (~cientos de MB) en segundo plano. Esa descarga empieza al
+arrancar, no al hablar, así que si esperas medio minuto antes de tu primera frase, ya
+debería estar lista.
+
+Ejemplo:
 
 ```
 🎙️  Listo. Habla con naturalidad; haz una pausa y el modelo responderá.
-    Análisis de sentimientos: ACTIVO
+    Emociones: ACTIVO (es) — el modelo se descarga la primera vez, puede tardar.
     (Ctrl+C para salir)
 
 🗣️  Tú: Me siento increíble hoy, conseguí ese trabajo que quería
-   📊 ALEGRÍA (0.94)
+   😊 ALEGRÍA (0.91)
 
-😊 Asistente: ¡Felicitaciones! Eso es genial. Cuéntame más sobre cómo te sientes...
-   📊 ALEGRÍA (0.91)
-
-🗣️  Tú: Estoy nervioso pero muy emocionado
-   📊 ESPERANZA (0.87)
+😊 Asistente: ¡Felicitaciones! Eso es genial...
+   😐 NEUTRAL (0.58)
 ```
 
-### Sin análisis de sentimientos (igual que v1)
+### Sin análisis de emociones (igual que v1)
 
 ```bash
 python realtime_voice.py
 ```
 
-### Con estadísticas
+### Con resumen al terminar
 
 ```bash
 python realtime_voice.py --sentiment --stats
 ```
 
-Al finalizar:
+Al pulsar Ctrl+C:
 
 ```
 📊 ESTADÍSTICAS DE CONVERSACIÓN
 ─────────────────────────────────
 Tú:
-  ALEGRÍA: 3 turnos (promedio: 0.87)
-  ESPERANZA: 2 turnos (promedio: 0.82)
+  ALEGRÍA: 3 turno(s) (promedio: 0.85)
+  NEUTRAL: 2 turno(s) (promedio: 0.60)
 
 Asistente:
-  ALEGRÍA: 2 turnos (promedio: 0.91)
-  EMPATÍA: 2 turnos (promedio: 0.85)
+  NEUTRAL: 4 turno(s) (promedio: 0.65)
+  ALEGRÍA: 1 turno(s) (promedio: 0.72)
 
-Tono general: POSITIVO 😊
+Tono general (heurística, no del modelo): POSITIVO 😊
 ```
 
-### Opciones completas
+### Otro idioma
+
+```bash
+python realtime_voice.py --sentiment --language en
+```
+
+Idiomas soportados: `es` (español, por defecto), `en` (inglés), `it` (italiano),
+`pt` (portugués). Cada uno usa un modelo distinto internamente; no hay opción para
+mezclar idiomas en la misma sesión.
+
+### Ajustar sensibilidad
+
+```bash
+# Menos falsos positivos, solo emociones claras
+python realtime_voice.py --sentiment --confidence-threshold 0.7
+
+# Ver todo, incluso clasificaciones dudosas (útil para depurar)
+python realtime_voice.py --sentiment --confidence-threshold 0 --debug
+```
+
+## Opciones completas
 
 ```bash
 python realtime_voice.py [opciones]
 
-Opciones de v1:
+Opciones de v1 (sin cambios):
   --voice VOICE              Voz del asistente (marin, cedar, etc.)
   --no-half-duplex           Con auriculares, permite barge-in
   --noise-reduction MODE     far_field (por defecto) o near_field
 
-Opciones de v2 (análisis de sentimientos):
-  --sentiment                Activa análisis de sentimientos
-  --sentiment-model MODEL    Modelo a usar (por defecto: bert-base-multilingual)
-  --stats                    Muestra estadísticas al final
-  --no-emoji                 Sin emojis, solo texto
-  --confidence-threshold T   Mostrar solo emociones > T (0-1, por defecto 0.5)
-  --language LANG            Especificar idioma (es, en, fr, etc.)
+Opciones de v2 (análisis de emociones):
+  --sentiment                Activa la clasificación de emociones
+  --language {es,en,it,pt}   Idioma del modelo (por defecto: es)
+  --stats                    Resumen de emociones al terminar (Ctrl+C)
+  --no-emoji                 Solo texto, sin emojis
+  --confidence-threshold T   Solo muestra si confianza >= T (por defecto: 0.5)
 ```
-
-## Ejemplos
-
-### Conversación con estadísticas
-
-```bash
-python realtime_voice.py --sentiment --stats --voice cedar
-```
-
-### Solo textos, sin emojis
-
-```bash
-python realtime_voice.py --sentiment --no-emoji
-```
-
-### Filtrar emociones débiles
-
-```bash
-python realtime_voice.py --sentiment --confidence-threshold 0.75
-```
-
-### Cambiar modelo
-
-```bash
-python realtime_voice.py --sentiment --sentiment-model distilbert-base-uncased-finetuned-sst-2-english
-```
-
-## Modelos disponibles
-
-### Multilingual (recomendado)
-
-```bash
-python realtime_voice.py --sentiment
-# o explícitamente:
-python realtime_voice.py --sentiment --sentiment-model bert-base-multilingual-uncased-sentiment
-```
-
-- **Idiomas:** 100+
-- **Tamaño:** 600MB
-- **Velocidad:** ~200ms por frase
-
-### Ligero (para máquinas lentas)
-
-```bash
-python realtime_voice.py --sentiment --sentiment-model distilbert-base-uncased-finetuned-sst-2-english
-```
-
-- **Idioma:** Inglés
-- **Tamaño:** 268MB
-- **Velocidad:** ~50ms por frase
 
 ## Troubleshooting
 
-**`ModuleNotFoundError: No module named 'transformers'`**
-→ Asegúrate de haber corrido `pip install -r requirements.txt`
+**La instalación tarda mucho o parece colgada**
+→ Normal. `pip install -r requirements.txt` resuelve dependencias de `torch` y
+`transformers`, que son pesadas. Déjalo correr varios minutos antes de asumir que falló.
 
-**Muy lento, latencia de 2+ segundos**
-→ Usa modelo ligero: `--sentiment-model distilbert-...`  
-→ O habilita GPU si tienes (detecta automáticamente)
+**`ERROR: --sentiment necesita 'pysentimiento'`**
+→ No completaste la instalación. Corre `pip install -r requirements.txt` de nuevo y
+revisa que no haya errores.
 
-**Las emociones no aparecen**
-→ Baja `--confidence-threshold`: `--confidence-threshold 0.3`  
-→ Prueba con `--debug` para ver confianza real
+**Las emociones no aparecen nunca**
+→ Baja el umbral: `--confidence-threshold 0.3`. Si con eso tampoco aparece nada,
+prueba `--debug` para ver si hay errores de análisis en la salida de error.
 
-**Uso de RAM muy alto**
-→ Reinicia el script cada hora  
-→ Usa modelo más pequeño
+**Tarda varios segundos en mostrar la emoción de la primera frase**
+→ Esperado: es la descarga/carga del modelo. Las frases siguientes son casi
+instantáneas porque el modelo ya está en memoria.
 
-**¿Qué emociones detecta?**
-→ Ver [EMOTIONS.md](EMOTIONS.md) (aún en desarrollo)
+**Uso de RAM alto**
+→ El modelo ocupa varios cientos de MB en memoria mientras el script corre. Es
+esperable con `transformers`; no hay forma de evitarlo sin cambiar de enfoque.
+
+**`UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects...`**
+→ Aviso benigno de `multiprocessing` al cerrar el proceso, viene de una dependencia
+interna de `torch`/`transformers` en macOS. Se ve al salir con Ctrl+C. No indica un
+fallo de este proyecto; se puede ignorar.
 
 ---
 
@@ -196,22 +163,20 @@ python realtime_voice.py --sentiment --sentiment-model distilbert-base-uncased-f
 
 | Aspecto | v1 | v2 |
 |---------|----|----|
-| Instalación | pip + sounddevice | pip + transformers + torch |
-| Uso básico | igual | igual, pero agrega `--sentiment` |
-| Renderizado | transcripción | transcripción + emociones |
-| Performance | muy rápido | +200ms por análisis |
-| CPU | bajo | medio durante análisis |
-| RAM | 200MB | 1GB+ (modelos precargados) |
+| Instalación | pip (rápida) | pip + torch/transformers (varios minutos) |
+| Uso básico | igual | igual, agrega `--sentiment` |
+| Consola | transcripción | transcripción + emoción por frase |
+| Latencia de audio | sin cambios | sin cambios (análisis en hilo aparte) |
+| RAM en reposo | ~200MB | ~200MB sin `--sentiment`, +varios cientos MB con él |
 
 ---
 
 ## Próximos pasos
 
-- Leer [README-v2.md](README-v2.md) para contexto
-- Ver [PLAN-v2.md](PLAN-v2.md) para desarrollo
-- Probar ejemplos arriba
-- Reportar bugs o sugerencias
+- Leer [README-v2.md](README-v2.md) para el contexto completo y qué NO detecta
+- Ver [PLAN-v2.md](PLAN-v2.md) para el estado de desarrollo
+- Probar con una conversación real y reportar si las emociones detectadas tienen sentido
 
 ---
 
-**¿Necesitas ayuda?** Ver [README-v2.md](README-v2.md) FAQ.
+**¿Necesitas ayuda?** Ver [README-v2.md](README-v2.md).

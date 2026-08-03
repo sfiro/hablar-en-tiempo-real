@@ -1,5 +1,5 @@
-# v2.0 — Análisis de sentimientos en tiempo real
-# Incluye todas las dependencias de v1 + transformers
+# v2.0 — Análisis de emociones en tiempo real
+# Incluye todas las dependencias de v1 + pysentimiento
 
 # Dependencias de v1 (sin cambios)
 websockets>=13.0
@@ -8,6 +8,5 @@ numpy>=1.26
 python-dotenv>=1.0
 certifi>=2024.2.2
 
-# Nuevas para v2 (análisis de sentimientos)
-transformers>=4.40.0
-torch>=2.0.0
+# Nueva para v2 (análisis de emociones): trae transformers y torch como dependencias.
+pysentimiento>=0.7.0

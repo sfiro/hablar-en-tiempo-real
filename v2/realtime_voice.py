@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """
-Conversación de voz en tiempo real con la Realtime API de OpenAI (modelo GA `gpt-realtime`).
+Conversación de voz en tiempo real con la Realtime API de OpenAI (modelo GA `gpt-realtime`),
+con análisis de emociones opcional.
 
 Captura el micrófono, lo envía por WebSocket a OpenAI, y reproduce por los altavoces
 la respuesta de voz del modelo. Usa detección de turnos (server VAD): simplemente habla
 y haz una pausa; el modelo te responderá. Puedes interrumpirlo hablando encima.
+
+Con --sentiment, cada frase (tuya y del asistente) se clasifica en una de seis
+emociones de Ekman + neutral (alegría, tristeza, rabia, miedo, sorpresa, asco) y se
+muestra en consola. Ver sentiment_analyzer.py para los detalles del modelo.
 
 Requisitos:  pip install -r requirements.txt
 Variable de entorno:  OPENAI_API_KEY  (se lee del entorno o del fichero .env)
 
 Uso:
     python realtime_voice.py
-    python realtime_voice.py --voice cedar --model gpt-realtime
+    python realtime_voice.py --sentiment
+    python realtime_voice.py --sentiment --stats --language es
 """
 
 import argparse
@@ -43,6 +49,11 @@ ECHO_TAIL_MS = 600            # margen tras callar antes de reabrir el micro (ec
 MIN_BARGE_RMS = 600           # suelo absoluto de volumen para dar por buena una voz
 
 REALTIME_URL = "wss://api.openai.com/v1/realtime?model={model}"
+
+# Para el resumen de --stats: no es una separación científica, solo una forma de dar
+# un tono aproximado sin inventar una emoción "positiva/negativa" que el modelo no da.
+POSITIVE_LABELS = {"ALEGRÍA", "SORPRESA"}
+NEGATIVE_LABELS = {"TRISTEZA", "RABIA", "MIEDO", "ASCO"}
 
 
 class Playback:
@@ -177,6 +188,57 @@ class BargeInDetector:
         return False
 
 
+class ConversationStats:
+    """Acumula las emociones detectadas por turno para un resumen al final.
+
+    El "tono general" es una heurística simple (cuenta positivas vs. negativas), no un
+    veredicto del modelo: pysentimiento no produce una etiqueta de polaridad, solo la
+    emoción dominante. Se declara así en la salida para no sugerir más precisión de la
+    que hay.
+    """
+
+    ROLE_NAMES = {"user": "Tú", "assistant": "Asistente"}
+
+    def __init__(self):
+        self._data = {"user": {}, "assistant": {}}
+
+    def add(self, role: str, result: dict):
+        bucket = self._data[role].setdefault(result["label"], [])
+        bucket.append(result["confidence"])
+
+    def has_data(self) -> bool:
+        return any(self._data[role] for role in self._data)
+
+    def summarize(self) -> str:
+        lines = ["📊 ESTADÍSTICAS DE CONVERSACIÓN", "─" * 33]
+        pos_count = neg_count = 0
+
+        for role in ("user", "assistant"):
+            emotions = self._data[role]
+            if not emotions:
+                continue
+            lines.append(f"{self.ROLE_NAMES[role]}:")
+            for label, confidences in sorted(emotions.items(), key=lambda kv: -len(kv[1])):
+                avg = sum(confidences) / len(confidences)
+                lines.append(f"  {label}: {len(confidences)} turno(s) (promedio: {avg:.2f})")
+                if label in POSITIVE_LABELS:
+                    pos_count += len(confidences)
+                elif label in NEGATIVE_LABELS:
+                    neg_count += len(confidences)
+            lines.append("")
+
+        if pos_count or neg_count:
+            if pos_count > neg_count:
+                tono = "POSITIVO 😊"
+            elif neg_count > pos_count:
+                tono = "NEGATIVO 😢"
+            else:
+                tono = "MIXTO 😐"
+            lines.append(f"Tono general (heurística, no del modelo): {tono}")
+
+        return "\n".join(lines).rstrip()
+
+
 def build_session_config(voice: str, instructions: str, vad_threshold: float,
                          half_duplex: bool, noise_reduction: str, vad_type: str,
                          push_to_talk: bool) -> dict:
@@ -234,7 +296,8 @@ def build_session_config(voice: str, instructions: str, vad_threshold: float,
 async def run(model: str, voice: str, instructions: str, vad_threshold: float,
               half_duplex: bool, noise_reduction: str, vad_type: str, debug: bool,
               echo_tail_ms: int, push_to_talk: bool, barge_in: bool,
-              barge_in_factor: float):
+              barge_in_factor: float, sentiment: bool, language: str, stats: bool,
+              no_emoji: bool, confidence_threshold: float):
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         sys.exit(
@@ -242,13 +305,34 @@ async def run(model: str, voice: str, instructions: str, vad_threshold: float,
             '(OPENAI_API_KEY="sk-...") o expórtala en tu shell.'
         )
 
+    analyzer = None
+    conv_stats = ConversationStats() if (sentiment and stats) else None
+    loop = asyncio.get_running_loop()
+
+    if sentiment:
+        # Falla ya, antes de conectar, en vez de a mitad de conversación cuando llegue
+        # la primera frase y el import falle dentro del executor.
+        try:
+            import pysentimiento  # noqa: F401
+        except ImportError:
+            sys.exit(
+                "ERROR: --sentiment necesita 'pysentimiento'. Instala con:\n"
+                "  pip install -r requirements.txt"
+            )
+        from sentiment_analyzer import SentimentAnalyzer
+        analyzer = SentimentAnalyzer(language=language)
+        # Precarga el modelo en segundo plano: si se deja para la primera frase, esa
+        # frase concreta tarda varios segundos extra (descarga + carga en memoria).
+        # run_in_executor ya devuelve un Future agendado en el loop: no hay que (y no
+        # se puede) envolverlo en create_task, que exige una corrutina.
+        loop.run_in_executor(None, analyzer._load)
+
     url = REALTIME_URL.format(model=model)
     headers = {"Authorization": f"Bearer {api_key}"}
 
     playback = Playback()
     gate = MicGate(playback, echo_tail_ms) if half_duplex else None
     mic_queue: asyncio.Queue[bytes] = asyncio.Queue()
-    loop = asyncio.get_running_loop()
     talking = threading.Event()          # solo en push-to-talk
     response_active = threading.Event()  # hay una respuesta generándose ahora mismo
     turn_bytes = [0]                     # audio capturado en el turno actual
@@ -309,7 +393,36 @@ async def run(model: str, voice: str, instructions: str, vad_threshold: float,
                       + (" Córtale hablando por encima." if detector else ""))
                 print("    Pulsa Enter en cualquier momento para cortarle."
                       + ("" if detector else " (o prueba --barge-in)"))
+        if sentiment:
+            print(f"    Emociones: ACTIVO ({language}) — el modelo se descarga la "
+                  "primera vez, puede tardar.")
         print("    (Ctrl+C para salir)\n")
+
+        async def analyze_and_print(role: str, text: str):
+            """Clasifica la emoción de una frase sin bloquear el resto de la conversación.
+
+            Se agenda con create_task: la inferencia (cientos de ms) corre en un hilo
+            aparte, así que nunca retrasa la lectura de eventos de audio del websocket.
+            """
+            text = text.strip()
+            if not text or analyzer is None:
+                return
+            try:
+                result = await loop.run_in_executor(None, analyzer.analyze, text)
+            except Exception as e:
+                print(f"\n⚠️  Error analizando emoción: {e}", file=sys.stderr)
+                return
+            if result["confidence"] < confidence_threshold:
+                return
+            if conv_stats is not None:
+                conv_stats.add(role, result)
+            emoji = "" if no_emoji else result["emoji"] + " "
+            # Salto de línea inicial: esto se imprime desde una tarea aparte y puede
+            # llegar mientras el otro lado sigue en pleno streaming de su transcripción
+            # (print de deltas sin salto de línea). Sin el \n, el resultado queda
+            # mezclado en medio de esa frase. Mismo patrón que el resto de avisos
+            # asíncronos del script (⏹️, ⚠️, ✂️).
+            print(f"\n   {emoji}{result['label']} ({result['confidence']:.2f})")
 
         async def interrupt():
             """Corta al asistente: calla el altavoz y aborta la generación en curso."""
@@ -379,6 +492,8 @@ async def run(model: str, voice: str, instructions: str, vad_threshold: float,
                 }
                 await ws.send(json.dumps(event))
 
+        assistant_transcript = []  # acumula deltas hasta response.output_audio_transcript.done
+
         async def receiver():
             async for message in ws:
                 event = json.loads(message)
@@ -415,13 +530,23 @@ async def run(model: str, voice: str, instructions: str, vad_threshold: float,
                         print(f"\n✂️  Respuesta {status}: {json.dumps(details)}", file=sys.stderr)
 
                 elif etype == "response.output_audio_transcript.delta":
-                    print(event.get("delta", ""), end="", flush=True)
+                    delta = event.get("delta", "")
+                    print(delta, end="", flush=True)
+                    if sentiment:
+                        assistant_transcript.append(delta)
 
                 elif etype == "response.output_audio_transcript.done":
                     print()  # salto de línea al terminar la frase del asistente
+                    if sentiment:
+                        texto = "".join(assistant_transcript)
+                        assistant_transcript.clear()
+                        asyncio.create_task(analyze_and_print("assistant", texto))
 
                 elif etype == "conversation.item.input_audio_transcription.completed":
-                    print(f"\n🗣️  Tú: {event.get('transcript', '').strip()}")
+                    texto = event.get("transcript", "").strip()
+                    print(f"\n🗣️  Tú: {texto}")
+                    if sentiment:
+                        asyncio.create_task(analyze_and_print("user", texto))
 
                 elif etype == "input_audio_buffer.speech_started":
                     # Con la compuerta cerrada esto NO debería llegar mientras suena el
@@ -450,10 +575,15 @@ async def run(model: str, voice: str, instructions: str, vad_threshold: float,
             mic_stream.stop()
             mic_stream.close()
             playback.stop()
+            if conv_stats is not None and conv_stats.has_data():
+                print()
+                print(conv_stats.summarize())
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Conversación de voz en tiempo real con OpenAI Realtime API.")
+    parser = argparse.ArgumentParser(
+        description="Conversación de voz en tiempo real con OpenAI Realtime API, con "
+                    "análisis de emociones opcional.")
     parser.add_argument("--model", default="gpt-realtime", help="Modelo de voz (por defecto: gpt-realtime).")
     parser.add_argument("--voice", default="marin",
                         help="Voz: marin, cedar, alloy, echo, shimmer… (por defecto: marin).")
@@ -493,6 +623,22 @@ def main():
                              f"(por defecto: {ECHO_TAIL_MS}). Súbelo si la sala tiene eco.")
     parser.add_argument("--debug", action="store_true",
                         help="Imprime los eventos de la API para diagnosticar cortes.")
+
+    # --- Opciones de v2: análisis de emociones ------------------------------
+    parser.add_argument("--sentiment", action="store_true",
+                        help="Clasifica la emoción de cada frase (tuya y del asistente) "
+                             "y la muestra en consola. Necesita 'pysentimiento' instalado.")
+    parser.add_argument("--language", choices=("es", "en", "it", "pt"), default="es",
+                        help="Idioma del modelo de emociones (por defecto: es). "
+                             "pysentimiento usa un modelo distinto por idioma.")
+    parser.add_argument("--stats", action="store_true",
+                        help="Muestra un resumen de emociones detectadas al terminar "
+                             "la conversación. Solo tiene efecto con --sentiment.")
+    parser.add_argument("--no-emoji", action="store_true",
+                        help="No muestra emojis junto a la emoción, solo texto.")
+    parser.add_argument("--confidence-threshold", type=float, default=0.5,
+                        help="Solo muestra la emoción si su confianza supera este valor, "
+                             "0-1 (por defecto: 0.5). Súbelo para reducir falsos positivos.")
     args = parser.parse_args()
 
     try:
@@ -500,7 +646,9 @@ def main():
                         args.vad_threshold, args.half_duplex,
                         args.noise_reduction, args.vad_type, args.debug,
                         args.echo_tail_ms, args.push_to_talk,
-                        args.barge_in, args.barge_in_factor))
+                        args.barge_in, args.barge_in_factor,
+                        args.sentiment, args.language, args.stats,
+                        args.no_emoji, args.confidence_threshold))
     except KeyboardInterrupt:
         print("\n👋 Adiós.")
 

@@ -1,123 +1,104 @@
 #!/usr/bin/env python3
 """
-Analizador de sentimientos en tiempo real.
+Analizador de emociones en tiempo real, usando `pysentimiento`.
 
-Clasifica emociones de texto usando transformers (BERT multilingüe).
+Clasifica las seis emociones de Ekman más una categoría neutral (`others`): alegría,
+tristeza, rabia, miedo, sorpresa, asco. No hay atajo honesto para matices como
+«esperanza» o «empatía»: los modelos públicos de emoción se entrenan sobre este
+conjunto y es mejor ceñirse a él que fingir una precisión que no existe.
+
+`pysentimiento` trae un modelo específico por idioma (RoBERTuito para español,
+BERTweet para inglés, etc.), así que el idioma se fija al crear el analizador.
 """
 
-from transformers import pipeline
-from typing import Dict, Optional
 import logging
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 
-# Mapeo de etiquetas del modelo a emociones humanas
+LANGUAGES = ("es", "en", "it", "pt")
+
+# Etiquetas reales que devuelve pysentimiento (task="emotion"): anger, disgust, fear,
+# joy, sadness, surprise, others. Confirmado contra la documentación del modelo.
 EMOTION_MAP = {
-    "positive": {"emotion": "joy", "label": "ALEGRÍA", "emoji": "😊", "color": "yellow"},
-    "negative": {"emotion": "sadness", "label": "TRISTEZA", "emoji": "😢", "color": "blue"},
-    "neutral": {"emotion": "neutral", "label": "NEUTRAL", "emoji": "😐", "color": "gray"},
+    "joy":      {"label": "ALEGRÍA",  "emoji": "😊"},
+    "sadness":  {"label": "TRISTEZA", "emoji": "😢"},
+    "anger":    {"label": "RABIA",    "emoji": "😠"},
+    "fear":     {"label": "MIEDO",    "emoji": "😨"},
+    "surprise": {"label": "SORPRESA", "emoji": "😲"},
+    "disgust":  {"label": "ASCO",     "emoji": "🤢"},
+    "others":   {"label": "NEUTRAL",  "emoji": "😐"},
 }
 
 
 class SentimentAnalyzer:
-    """Análisis de sentimientos con caching y soporte multilingüe."""
+    """Clasificador de emociones con carga perezosa y caché de resultados."""
 
-    def __init__(self, model: str = "bert-base-multilingual-uncased-sentiment"):
-        """
-        Inicializa el analizador.
+    def __init__(self, language: str = "es"):
+        if language not in LANGUAGES:
+            raise ValueError(f"Idioma no soportado: {language!r}. Usa uno de {LANGUAGES}.")
+        self.language = language
+        self._analyzer = None
+        self._cache: Dict[str, Dict] = {}
 
-        Args:
-            model: Nombre del modelo de Hugging Face. Por defecto, BERT multilingüe.
-        """
-        self.model_name = model
-        self.pipeline = None
-        self._cache = {}
-
-        logger.info(f"SentimentAnalyzer inicializado con modelo: {model}")
-
-    def _load_pipeline(self):
-        """Carga el modelo lazy (solo cuando se necesita)."""
-        if self.pipeline is None:
-            logger.info(f"Descargando modelo {self.model_name}...")
-            self.pipeline = pipeline("sentiment-analysis", model=self.model_name)
-            logger.info("Modelo cargado.")
+    def _load(self):
+        """Descarga y carga el modelo. Lento la primera vez (~cientos de MB)."""
+        if self._analyzer is not None:
+            return
+        try:
+            from pysentimiento import create_analyzer
+        except ImportError as e:
+            raise RuntimeError(
+                "Falta 'pysentimiento'. Instala con: pip install -r requirements.txt"
+            ) from e
+        logger.info(f"Cargando modelo de emociones ({self.language})…")
+        self._analyzer = create_analyzer(task="emotion", lang=self.language)
+        logger.info("Modelo de emociones listo.")
 
     def analyze(self, text: str) -> Dict:
         """
-        Analiza el sentimiento de un texto.
+        Clasifica la emoción dominante de un texto.
 
-        Args:
-            text: Texto a analizar
-
-        Returns:
-            Dict con:
-                - emotion: clave interna (joy, sadness, etc.)
-                - label: etiqueta en español (ALEGRÍA, TRISTEZA, etc.)
-                - confidence: confianza 0-1
-                - emoji: emoji asociado
-                - original_label: etiqueta original del modelo
+        Devuelve: {"emotion": clave interna, "label": etiqueta en español,
+                   "confidence": 0-1, "emoji": str}
         """
-        if not text or len(text.strip()) == 0:
-            return {
-                "emotion": "neutral",
-                "label": "NEUTRAL",
-                "confidence": 0.0,
-                "emoji": "😐",
-                "original_label": "",
-            }
+        text = (text or "").strip()
+        if not text:
+            return {"emotion": "others", "label": "NEUTRAL", "confidence": 0.0, "emoji": "😐"}
 
-        # Caché: evita reanalizar el mismo texto
         if text in self._cache:
             return self._cache[text]
 
-        self._load_pipeline()
+        self._load()
+        result = self._analyzer.predict(text[:512])
+        emotion = result.output
+        confidence = float(result.probas[emotion])
+        info = EMOTION_MAP.get(emotion, EMOTION_MAP["others"])
 
-        try:
-            result = self.pipeline(text[:512])[0]  # Limita a 512 caracteres
-            label = result["label"].lower()
-            confidence = result["score"]
-
-            # Mapear a emociones humanas
-            emotion_info = EMOTION_MAP.get(label, EMOTION_MAP["neutral"])
-
-            output = {
-                "emotion": emotion_info["emotion"],
-                "label": emotion_info["label"],
-                "confidence": confidence,
-                "emoji": emotion_info["emoji"],
-                "original_label": label,
-            }
-
-            self._cache[text] = output
-            return output
-
-        except Exception as e:
-            logger.error(f"Error analizando sentimiento: {e}")
-            return {
-                "emotion": "neutral",
-                "label": "ERROR",
-                "confidence": 0.0,
-                "emoji": "❌",
-                "original_label": "error",
-            }
+        output = {
+            "emotion": emotion,
+            "label": info["label"],
+            "confidence": confidence,
+            "emoji": info["emoji"],
+        }
+        self._cache[text] = output
+        return output
 
     def clear_cache(self):
-        """Limpia la caché de análisis."""
         self._cache.clear()
 
 
-# Uso simple
 if __name__ == "__main__":
-    analyzer = SentimentAnalyzer()
-
-    textos = [
-        "Estoy muy feliz hoy",
-        "Me siento triste",
-        "Todo está bien",
-        "I'm so happy!",
-        "Je suis très heureux",
+    analyzer = SentimentAnalyzer(language="es")
+    ejemplos = [
+        "Estoy feliz de verte",
+        "Me da mucha rabia esto",
+        "Tengo miedo de lo que pueda pasar",
+        "Qué sorpresa tan grande",
+        "Esto me da asco",
+        "Estoy muy triste hoy",
+        "El cielo es azul",
     ]
-
-    for texto in textos:
-        resultado = analyzer.analyze(texto)
-        print(f"{resultado['emoji']} {resultado['label']} ({resultado['confidence']:.2f}) — {texto}")
+    for texto in ejemplos:
+        r = analyzer.analyze(texto)
+        print(f"{r['emoji']} {r['label']} ({r['confidence']:.2f}) — {texto}")
