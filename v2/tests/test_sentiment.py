@@ -142,3 +142,28 @@ def test_real_model_detecta_miedo_obvio():
     analyzer = SentimentAnalyzer(language="es")
     result = analyzer.analyze("Tengo mucho miedo, esto me aterra")
     assert result["emotion"] == "fear"
+
+
+@requiere_modelo_real
+def test_real_model_detecta_rabia_obvia():
+    # Frases cortas ("Estoy furioso contigo") clasifican mal (dan MIEDO). Esta,
+    # más larga y con "indignante", da 0.91 de confianza para RABIA.
+    analyzer = SentimentAnalyzer(language="es")
+    result = analyzer.analyze("Odio que me traten así, es indignante")
+    assert result["emotion"] == "anger"
+
+
+@requiere_modelo_real
+def test_real_model_detecta_sorpresa_obvia():
+    # "Qué sorpresa tan grande" a secas clasifica como ALEGRÍA. Esta frase, con
+    # "no puedo creerlo", da 0.98 de confianza para SORPRESA.
+    analyzer = SentimentAnalyzer(language="es")
+    result = analyzer.analyze("No puedo creerlo, esto es una sorpresa total")
+    assert result["emotion"] == "surprise"
+
+
+@requiere_modelo_real
+def test_real_model_detecta_asco_obvio():
+    analyzer = SentimentAnalyzer(language="es")
+    result = analyzer.analyze("Esto me da asco")
+    assert result["emotion"] == "disgust"

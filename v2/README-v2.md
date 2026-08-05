@@ -80,10 +80,18 @@ añadimos nosotros para dar un resumen legible — **no** es una salida del mode
 
 Verificado con el modelo real, no supuesto:
 
-- **Confunde rabia con tristeza en algunos casos.** "Me da mucha rabia esto" clasificó
-  como TRISTEZA con 0.38 de confianza, no RABIA. Con el umbral por defecto (0.5) esa
-  clasificación queda oculta por baja confianza, así que el síntoma visible es más bien
-  "no dijo nada" que "se equivocó" — pero el fallo de fondo está ahí.
+- **Las frases cortas y directas fallan más que las elaboradas.** Es el patrón más
+  claro que encontramos probando las seis emociones:
+
+  | Frase corta (falla) | Clasificó como | Frase elaborada (acierta) | Clasificó como |
+  |---|---|---|---|
+  | "Me da mucha rabia esto" | TRISTEZA (0.38) | "Odio que me traten así, es indignante" | RABIA (0.91) |
+  | "Estoy furioso contigo" | MIEDO (0.35) | "Qué rabia me da, no lo soporto" | RABIA (0.82) |
+  | "Qué sorpresa tan grande" | ALEGRÍA (0.80) | "No puedo creerlo, es una sorpresa total" | SORPRESA (0.98) |
+
+  Con el umbral por defecto (0.5), varias de esas fallas quedan ocultas por baja
+  confianza — el síntoma visible es "no dijo nada" más que "se equivocó" — pero el
+  fallo de fondo está ahí, y a veces sí supera el umbral (ver siguiente punto).
 - **Falsos positivos en frases neutras.** "El cielo es azul" (neutral, obviamente) dio
   ALEGRÍA con 0.57, que sí supera el umbral por defecto y se mostraría como si fuera
   una clasificación real.
@@ -92,9 +100,11 @@ Verificado con el modelo real, no supuesto:
   distinta en registro y estructura; es razonable esperar más ruido que el reportado
   en los benchmarks originales del modelo.
 
-En resumen: sirve bien para lo obvio (alegría o miedo claros, con confianza alta) y
-hay que tomar con reservas los casos de confianza media, que van a aparecer con
-cierta frecuencia. Subir `--confidence-threshold` reduce el ruido pero no lo elimina.
+En resumen: sirve bien para frases con carga emocional explícita y algo elaborada
+("no puedo creerlo, qué sorpresa" en vez de solo "qué sorpresa"), y falla más de lo
+ideal en exclamaciones cortas. Subir `--confidence-threshold` reduce el ruido pero no
+lo elimina, y en algún caso ni siquiera ayuda (el falso positivo del cielo azul pasa
+el umbral por defecto).
 
 ---
 

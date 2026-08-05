@@ -116,8 +116,8 @@ y acierta en los casos claros (no hace falta que acierte en matices ambiguos).
 - **Lógica interna** (caché, validación de idioma, texto vacío, mapeo de emociones):
   con un analizador falso inyectado, no necesitan el modelo real. 8 tests, todos pasan.
 - **Integración con el modelo real** (`@requiere_modelo_real`, se saltan si falta
-  `pysentimiento`): 3 casos obvios (alegría, tristeza, miedo). Los 3 pasan contra el
-  modelo real descargado.
+  `pysentimiento`): las 6 emociones de Ekman. Los 6 pasan contra el modelo real
+  descargado.
 
 ```bash
 python -m pip install -r requirements-dev.txt
@@ -126,8 +126,13 @@ python -m pytest tests/test_sentiment.py -v
 
 **Criterio:** casos obvios (uno por emoción) clasifican correctamente. No se testea
 precisión estadística fina, solo que el pipeline funciona de extremo a extremo.
-**Cumplido** para joy, sadness, fear. Pendiente ampliar a anger, surprise, disgust
-(los primeros intentos con esas frases dieron resultados dudosos, ver limitaciones).
+**Cumplido para las 6 emociones** (joy, sadness, fear, anger, surprise, disgust).
+
+Para encontrar frases fiables de anger, surprise y disgust hubo que probar varias
+antes de dar con una que el modelo clasificara bien: los primeros intentos (frases
+cortas y directas) fallaban. Ese hallazgo — que las frases elaboradas aciertan más
+que las cortas — quedó documentado en README-v2.md, sección «Limitaciones conocidas»,
+con la tabla comparativa de frase corta (falla) vs. elaborada (acierta).
 
 ---
 
@@ -171,16 +176,15 @@ v2.0.0 está lista para release cuando:
 2. ✅ No añade latencia perceptible al audio (verificado: análisis en hilo aparte,
    confirmado en ejecución real contra la API)
 3. ✅ Funciona igual que v1 si no usas `--sentiment`
-4. ✅ Tests de integración pasan para 3 de los 6 casos obvios (joy, sadness, fear)
+4. ✅ Tests de integración pasan para las 6 emociones de Ekman (joy, sadness, fear,
+   anger, surprise, disgust)
 5. ✅ Documentación con ejemplos reales, no inventados (incluye limitaciones reales)
 6. [ ] Validado con conversación real hablada a propósito, no solo ruido ambiente ni
-   texto de prueba
-7. [ ] Tests ampliados a los 3 casos restantes (anger, surprise, disgust) — los
-   primeros intentos con esas frases dieron resultados de confianza dudosa, ver
-   «Limitaciones conocidas» en README-v2.md
+   texto de prueba — **la única tarea que queda, y necesita a alguien hablando**
 
 ---
 
 **Última actualización:** Agosto 3, 2026
-**Estado actual:** Hito 1 completo y verificado en ejecución real. Hito 2 en progreso:
-faltan las tareas marcadas arriba, todas dependientes de una conversación hablada real.
+**Estado actual:** Hito 1 y 2 completos salvo la validación con voz real (punto 6 de
+arriba). Todo lo demás verificado: modelo real, tests de las 6 emociones, ejecución
+end-to-end sin bloquear audio, dos bugs encontrados y corregidos.
