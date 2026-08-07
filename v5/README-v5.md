@@ -54,6 +54,44 @@ pedir toda la corriente de golpe), espera 150ms, y los reabre igual de escalonad
 Esto **bloquea el bucle principal ~230ms** mientras dura — es el mismo
 comportamiento que en el original, no una regresión introducida aquí.
 
+## Arranque limpio: /OE del PCA9685
+
+**Síntoma encontrado al probar en hardware real:** al conectar la alimentación,
+todos los servos se movían solos en direcciones aleatorias durante 1-2 segundos,
+con cualquier firmware, incluso antes de que llegara a ejecutarse ningún código.
+
+**Diagnóstico:** entre el instante en que llega la alimentación y el instante en
+que la Pico termina de arrancar y configura el PCA9685 por I2C, las salidas PWM del
+chip quedan en un estado indefinido. Los servos son sensibles a cualquier señal en
+su cable de control y reaccionan a ese ruido como si fuera un comando válido.
+
+**Arreglo, en dos partes:**
+
+1. **Hardware (lo tienes que hacer tú):** el pin `/OE` (Output Enable, activo en
+   bajo) del PCA9685 estaba puesto directo a GND — salidas siempre habilitadas.
+   Hay que:
+   - Quitar ese jumper/cable de `/OE` a GND
+   - Añadir una resistencia de pull-up (10kΩ típico) de `/OE` a `VCC` en la misma
+     placa PCA9685 — así `/OE` queda en HIGH (deshabilitado) por defecto incluso
+     antes de que la Pico arranque
+   - Cablear `/OE` a `GP2` de la Pico
+
+2. **Firmware (ya en `main.py`):** `GP2` se configura como salida y se pone en
+   HIGH (deshabilitado) como lo primero que hace el código. Las salidas se vuelven
+   a habilitar justo después de inicializar el chip PCA9685, **antes** de los
+   bucles de centrado — en ese punto los registros de posición siguen en su estado
+   de reposo de fábrica (sin señal), así que habilitar ahí no causa ningún
+   movimiento. Si se habilitara después de programar ya las posiciones, los 8
+   servos saltarían todos a la vez al habilitar, justo lo que el espaciado de
+   0.1s entre motores quiere evitar.
+
+**Aviso eléctrico, sin confirmar:** esto asume que el pin `VCC` (lógica) de tu
+PCA9685 está a 3.3V, o a un voltaje donde un GPIO de 3.3V de la Pico marque un HIGH
+inequívoco. Si tu placa alimenta la lógica a 5V, el umbral de `VIH` podría quedar
+por encima de lo que un GPIO de 3.3V puede garantizar, y el arreglo no sería fiable.
+Si después de este cambio el temblor de encendido sigue apareciendo igual, ese
+desajuste de nivel lógico es la explicación más probable a revisar.
+
 ## Qué NO cambia (deliberado)
 
 - El protocolo serial sigue siendo `"LR,UD\n"` o `"LR,UD,EMOCION\n"` (ignorando la
@@ -73,15 +111,25 @@ comportamiento que en el original, no una regresión introducida aquí.
 - Los 19 tests de `face_tracker.py`/`pico_serial.py` heredados de v4, sin cambios,
   corriendo dentro del `.venv` propio de v5
 
-**No verificado, necesita la Pico física:**
-- Que el cuello se mueva de verdad de forma orgánica siguiendo los ojos (la fórmula
-  está verificada matemáticamente, no cómo se ve/siente en el rig)
-- Que el parpadeo no interfiera perceptiblemente con la fluidez del rastreo — el
-  bloqueo de ~230ms durante cada parpadeo podría notarse como una pausa breve en el
-  seguimiento; solo se confirma mirando el hardware real
-- Que los 3 servos nuevos en movimiento simultáneo (cuello + parpadeo + ojos) no
-  sobrecarguen la fuente de alimentación — v4 solo movía 2 ejes activamente, v5
-  mueve hasta 6 (LR, UD, PAN, TILT, y los 4 párpados durante el parpadeo)
+**Verificado con la Pico real, por el usuario:**
+- El rastreo de ojos y el movimiento arriba/abajo (TILT) funcionan bien
+- El temblor aleatorio de encendido, diagnosticado y con arreglo propuesto (ver
+  arriba) — pendiente de confirmar que el arreglo lo elimina de verdad
+
+**No verificado todavía:**
+- **Por qué PAN (rotación izquierda/derecha) no se mueve**, aunque el código es
+  idéntico en estructura al de TILT (mismo sistema de ejes, mismo suavizado). No se
+  encontró ningún bug de lógica revisando el fichero línea por línea — la hipótesis
+  de trabajo es hardware (cable, servo, o un tope mecánico en ese eje concreto,
+  nunca antes ejercitado activamente en v4). Diagnóstico en curso con
+  [`diagnostico_canal.py`](diagnostico_canal.py), que mueve ese canal solo, sin
+  nada de la lógica de rastreo de por medio
+- Que el arreglo de `/OE` funcione de verdad con el nivel lógico real de la placa
+  PCA9685 del usuario (ver aviso eléctrico arriba)
+- Que el cuello se mueva de forma orgánica y que el parpadeo no cause tirones
+  perceptibles en el rastreo — pendiente una vez resuelto lo de PAN
+- Que los servos nuevos en movimiento simultáneo no sobrecarguen la fuente —
+  v4 solo movía 2 ejes activamente, v5 mueve hasta 6
 
 ## Cómo probarlo
 

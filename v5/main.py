@@ -15,6 +15,21 @@
 #
 # Acepta "LR,UD\n" o "LR,UD,EMOCION\n" (formato de v3/v4) ignorando el tercer campo:
 # el Mac (pico_serial.py, copia propia de v5) no necesita ningún cambio.
+#
+# --- Arranque limpio con /OE (Output Enable) del PCA9685 ---------------------
+# Al conectar la alimentación, todos los servos se movían solos y en direcciones
+# aleatorias durante 1-2s, hasta que este firmware terminaba de arrancar y tomaba
+# el control. Pasaba con cualquier firmware, incluso antes de ejecutar código: las
+# salidas PWM del PCA9685 quedan en un estado indefinido en el instante entre
+# "llega la alimentación" y "la Pico termina de arrancar y configura el chip", y
+# los servos reaccionan a esa señal indefinida como si fuera un comando válido.
+# La solución: cablear el pin /OE (activo en bajo) del PCA9685 a GP2, con una
+# resistencia de pull-up externa hacia VCC en la propia placa PCA9685 (antes
+# estaba puesto directo a GND, lo que dejaba las salidas siempre habilitadas).
+# El pull-up garantiza que /OE esté en HIGH (deshabilitado) por defecto incluso
+# antes de que la Pico arranque; el firmware lo confirma explícitamente al
+# principio y solo lo baja (habilita) cuando todos los servos ya están en su
+# posición inicial correcta — así nunca llega una señal indefinida a los motores.
 
 import machine
 import math
@@ -22,6 +37,13 @@ import random
 import select
 import sys
 import time
+
+# Deshabilita las salidas del PCA9685 ya mismo, lo primero que hace el firmware,
+# antes incluso de tocar el I2C. El pull-up externo en la placa PCA9685 ya lo
+# mantiene en HIGH desde antes de esto; esta línea lo hace explícito en el código
+# y no depende de que el pull-up sea perfecto.
+PIN_OE = machine.Pin(2, machine.Pin.OUT)
+PIN_OE.value(1)  # 1 = deshabilitado (OE es activo en bajo)
 
 
 class ControladorPCA9685:
@@ -53,6 +75,14 @@ class ControladorPCA9685:
 # ==========================================
 i2c = machine.I2C(0, sda=machine.Pin(0), scl=machine.Pin(1), freq=400000)
 pca = ControladorPCA9685(i2c)
+
+# Habilitamos las salidas AQUÍ, justo tras configurar el chip y antes de mover
+# ningún servo: en este punto los registros de posición de cada canal siguen en
+# su estado de reposo de fábrica (sin señal), así que habilitar ahora no mueve
+# nada todavía. Si se habilitara más tarde, después de programar ya todas las
+# posiciones, los 8 servos saltarían TODOS A LA VEZ al habilitar — justo lo que
+# el espaciado de 0.1s entre motores del bucle de abajo quiere evitar.
+PIN_OE.value(0)
 
 CANAL_LR, CANAL_UD = 0, 1
 CANAL_TL, CANAL_BL, CANAL_TR, CANAL_BR = 2, 3, 4, 5
