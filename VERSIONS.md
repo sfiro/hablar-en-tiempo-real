@@ -108,6 +108,31 @@ Detalle completo: [`v3/PLAN-v3.md`](v3/PLAN-v3.md).
 
 ---
 
+## v4.0.0 🔄 — Firmware simplificado de la Pico (código completo, validación pendiente)
+
+**Objetivo:** antes de retomar v3, organizar el firmware de la Pico con lo mínimo
+imprescindible: ojos abiertos + rastreo x,y, sin la complejidad de emociones,
+joystick, modo autónomo y parpadeo del `main.py` completo de `ojosMecanicos`.
+
+**Distinta de v1/v2/v3:** no es código de Mac con `.venv` — es firmware MicroPython
+que corre dentro de la Raspberry Pi Pico. Se copia con Thonny o `mpremote`, no se
+instala con pip.
+
+**Hito 1: `main.py` mínimo (COMPLETADO en código, falta hardware real)**
+- ✅ `v4/main.py`: solo párpados abiertos al arrancar + rastreo x,y con suavizado EMA
+- ✅ Protocolo compatible con v3 sin cambios (`v3/pico_serial.py` funciona tal cual)
+- ✅ Verificado sin hardware: sintaxis, fórmula de pulso PCA9685 (0°→102, 90°→307,
+  180°→512), parseo de comandos con casos límite y basura
+- [ ] Validar en la Pico real — no hay una conectada a este entorno
+
+**Hito 2: Validación con hardware** (necesita al usuario, con la Pico física)
+
+**Hito 3: Reintroducir complejidad por partes** (parpadeo → emociones → retomar v3)
+
+Detalle completo: [`v4/PLAN-v4.md`](v4/PLAN-v4.md).
+
+---
+
 ## Política de versiones
 
 ### Ramas y tags
@@ -152,7 +177,8 @@ cd v2             # entra en v2
 |---------|--------|-----------|
 | v1.0.0  | ✅ Completa | macOS, Linux |
 | v2.0.0  | 🔄 Código completo, falta validar con voz real | macOS |
-| v3.0.0  | 📋 Planificación (Hito 0 completo, sin código) | macOS + Raspberry Pi Pico (opcional) |
+| v3.0.0  | 🔄 Código completo (Hito 0 y 1), falta cámara/Pico reales | macOS + Raspberry Pi Pico (opcional) |
+| v4.0.0  | 🔄 Código completo, falta validar en la Pico real | Raspberry Pi Pico (MicroPython) |
 
 ---
 

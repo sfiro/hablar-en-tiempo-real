@@ -5,7 +5,8 @@ análisis de emociones y (en desarrollo) control de un rastreador facial mecáni
 
 **Estado:** v1 completa y respaldada · v2 completa en código, falta validar con voz
 real · v3 con rastreador facial + enlace serial completos en código, falta validar
-con cámara y hardware real.
+con cámara y hardware real · v4 (firmware de la Pico, simplificado) escrito, falta
+validar en hardware real.
 
 ## 📦 Versiones disponibles
 
@@ -77,6 +78,24 @@ python -m pytest tests/ -v        # 19 tests, sin necesitar cámara ni Pico
 
 Ver [`v3/README-v3.md`](v3/README-v3.md) y [`v3/PLAN-v3.md`](v3/PLAN-v3.md).
 
+### [v4](v4/) — Firmware simplificado de la Pico 🔄 (escrito, validación pendiente)
+**Estado:** `main.py` simplificado, con solo dos cosas: párpados abiertos al
+arrancar (sin parpadeo) y rastreo x,y por serial. Falta validar en la Pico real.
+
+**Esta versión es distinta a v1/v2/v3**: no es código de Mac con `.venv` — es
+firmware MicroPython que corre dentro de la Raspberry Pi Pico. Antes de retomar la
+integración de voz de v3, se decidió apartar la complejidad del `main.py` completo
+de `ojosMecanicos` (emociones, joystick, modo autónomo, parpadeo) para confirmar
+primero que el rastreo x,y funciona bien con una base simple.
+
+- Protocolo compatible con v3 sin cambios: acepta `"LR,UD"` y `"LR,UD,EMOCION"`
+  (ignorando la emoción), así `v3/pico_serial.py` habla con esta Pico sin tocar nada
+- Verificado sin hardware: sintaxis, fórmula de pulso PCA9685, parseo de comandos.
+  **No verificado en la Pico real** — no hay una conectada a este entorno
+
+Ver [`v4/README-v4.md`](v4/README-v4.md) para cómo desplegarlo (Thonny/`mpremote`)
+y [`v4/PLAN-v4.md`](v4/PLAN-v4.md) para los hitos.
+
 ## 📚 Documentación
 
 - [CLAUDE.md](CLAUDE.md) — contexto técnico completo del proyecto (para trabajar en el código)
@@ -84,6 +103,7 @@ Ver [`v3/README-v3.md`](v3/README-v3.md) y [`v3/PLAN-v3.md`](v3/PLAN-v3.md).
 - [v1/README-v1.md](v1/README-v1.md) · [v1/CLAUDE-v1.md](v1/CLAUDE-v1.md)
 - [v2/README-v2.md](v2/README-v2.md) · [v2/PLAN-v2.md](v2/PLAN-v2.md) · [v2/INSTALL-v2.md](v2/INSTALL-v2.md)
 - [v3/README-v3.md](v3/README-v3.md) · [v3/PLAN-v3.md](v3/PLAN-v3.md)
+- [v4/README-v4.md](v4/README-v4.md) · [v4/PLAN-v4.md](v4/PLAN-v4.md)
 - [docs/RASPBERRY-PI.md](docs/RASPBERRY-PI.md) — especificación para Pi 5, aparcada
 
 ## 🔧 Requisitos
@@ -92,17 +112,19 @@ Ver [`v3/README-v3.md`](v3/README-v3.md) y [`v3/PLAN-v3.md`](v3/PLAN-v3.md).
 - Clave de API de OpenAI con acceso a la Realtime API
 - Micrófono y altavoces (v1/v2) — cámara adicional para v3
 - v2 instala `pysentimiento` (torch + transformers): ~2GB, varios minutos la primera vez
+- v4 es firmware MicroPython: necesita la Raspberry Pi Pico física, no Python de Mac
 
 ## 📋 Comparativa de versiones
 
-| | v1 | v2 | v3 |
-|---|---|---|---|
-| Voz en tiempo real | ✅ | ✅ (hereda de v1) | ✅ (hereda de v2) |
-| Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 |
-| Análisis de emociones | — | ✅ `pysentimiento`, en consola | ✅ (hereda de v2) |
-| Rastreo facial | — | — | 🔄 código listo, falta cámara real |
-| Control de servos (Pico) | — | — | 🔄 código listo, falta hardware real |
-| Estado | ✅ Completa | Código completo, validación pendiente | Código completo, validación pendiente |
+| | v1 | v2 | v3 | v4 |
+|---|---|---|---|---|
+| Dónde corre | Mac | Mac | Mac | **la Pico** (MicroPython) |
+| Voz en tiempo real | ✅ | ✅ (hereda de v1) | ✅ (hereda de v2) | — (fuera de alcance a propósito) |
+| Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 | n/a |
+| Análisis de emociones | — | ✅ `pysentimiento`, en consola | ✅ (hereda de v2) | — |
+| Rastreo facial | — | — | 🔄 código listo, falta cámara real | n/a (recibe x,y ya calculado) |
+| Control de servos (Pico) | — | — | 🔄 código listo, falta hardware real | 🔄 ojos abiertos + x,y, falta hardware real |
+| Estado | ✅ Completa | Código completo, validación pendiente | Código completo, validación pendiente | Código completo, validación pendiente |
 
 ## 📖 Estructura del proyecto
 
@@ -121,12 +143,16 @@ Ver [`v3/README-v3.md`](v3/README-v3.md) y [`v3/PLAN-v3.md`](v3/PLAN-v3.md).
 │   ├── README-v2.md
 │   ├── PLAN-v2.md
 │   └── INSTALL-v2.md
-├── v3/                     # + Rastreo facial y servos
+├── v3/                     # + Rastreo facial y servos (código de Mac)
 │   ├── face_tracker.py     # FaceTracker (headless) + script standalone con ventana
 │   ├── pico_serial.py      # PicoLink: cola, reconexión, latido
 │   ├── tests/
 │   ├── README-v3.md
 │   └── PLAN-v3.md
+├── v4/                     # Firmware simplificado de la Pico (MicroPython, no Mac)
+│   ├── main.py             # Ojos abiertos + rastreo x,y, sin emociones/joystick
+│   ├── README-v4.md
+│   └── PLAN-v4.md
 ├── docs/
 │   └── RASPBERRY-PI.md     # Especificación técnica, aparcada
 ├── CLAUDE.md               # Contexto técnico completo del proyecto

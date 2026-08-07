@@ -1,9 +1,9 @@
 # CLAUDE.md
 
 Guía de todo el proyecto para trabajar en este repositorio. Cada versión (`v1/`, `v2/`,
-`v3/`) tiene su propia documentación detallada; este fichero es el mapa general y
-recoge los hechos que cruzan versiones. Empieza aquí, salta al `CLAUDE-vN.md` de la
-versión concreta cuando necesites el detalle de implementación.
+`v3/`, `v4/`) tiene su propia documentación detallada; este fichero es el mapa general
+y recoge los hechos que cruzan versiones. Empieza aquí, salta al `CLAUDE-vN.md` o
+`README-vN.md` de la versión concreta cuando necesites el detalle de implementación.
 
 ## Qué es el proyecto
 
@@ -16,14 +16,25 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
   consola. Código completo y probado contra el modelo real; falta validar con una
   conversación hablada de verdad.
 - **v3** — v2 + rastreo facial por cámara y (opcional) control de servos vía una
-  Raspberry Pi Pico. En planificación, sin código todavía.
+  Raspberry Pi Pico. Código completo (Hito 0 y 1), falta validar con cámara y
+  hardware real.
+- **v4** — firmware simplificado de la Pico (**MicroPython, no Mac**), aparcado a
+  propósito de la secuencia v1→v2→v3: antes de retomar la integración de voz, se
+  decidió organizar el `main.py` de la Pico con lo mínimo imprescindible (ojos
+  abiertos + rastreo x,y), sin la complejidad de emociones/joystick/modo autónomo.
+  Código completo, falta validar en la Pico real.
 
-Cada versión vive en su propia carpeta con su propio `.venv/`, `requirements.txt` y
-`.env`. **No hay dependencias cruzadas de código** entre versiones: v2 es una copia de
-v1 con el añadido de sentimiento, no un import de v1. Es deliberado — permite que v1
-quede congelada y estable mientras v2/v3 evolucionan.
+Cada versión de Mac (v1/v2/v3) vive en su propia carpeta con su propio `.venv/`,
+`requirements.txt` y `.env`. **No hay dependencias cruzadas de código** entre
+versiones: v2 es una copia de v1 con el añadido de sentimiento, no un import de v1.
+Es deliberado — permite que v1 quede congelada y estable mientras v2/v3 evolucionan.
 
-## Entorno, por versión
+**v4 rompe ese patrón a propósito:** no tiene `.venv/` ni `requirements.txt` porque
+no es Python que corra en el Mac — es firmware MicroPython que se copia a la Pico
+(con Thonny o `mpremote`) y se ejecuta ahí, fuera de cualquier entorno virtual. No
+intentes instalarlo con pip ni ejecutarlo con el Python del sistema.
+
+## Entorno, por versión (v1/v2/v3 — v4 no aplica, ver arriba)
 
 Cada carpeta tiene su propio venv. Usa siempre el Python de ese venv, nunca el del
 sistema (los certificados TLS y las dependencias están solo ahí):
@@ -192,6 +203,50 @@ solo que los hilos arrancan sin excepción.
 | surprise | SORPRENDIDO | directo |
 | disgust | NEUTRAL | no hay equivalente; se degrada en vez de inventar uno |
 | others | NEUTRAL | directo |
+
+## v4 — Firmware simplificado de la Pico
+
+[`v4/main.py`](v4/main.py) es un **subconjunto deliberado** de
+[`ojosMecanicos/main.py`](/Users/debbie/Desktop/programacion/ojosMecanicos/main.py):
+solo párpados abiertos (una vez, al arrancar) + rastreo x,y con el mismo suavizado
+EMA (`ALPHA=0.1`) y la misma fórmula de pulso PCA9685, copiadas literalmente del
+original, no reinventadas. Quita a propósito: joystick, modo autónomo, las 10
+emociones y su sincronía con la mirada, y el parpadeo automático/manual. Todo eso
+sigue intacto en `ojosMecanicos/main.py` — v4 no lo reemplaza, es una rama de
+desarrollo paralela y más simple, para confirmar el movimiento base antes de volver
+a montar la complejidad encima.
+
+**Motivo del pivote:** el usuario pidió expresamente organizar el firmware de la
+Pico *antes* de retomar la integración de voz (Hito 2 de v3). La secuencia de
+versiones no es v1→v2→v3→v4 en el sentido de "cada una añade sobre la última": v4 es
+un desvío sobre una pieza distinta del sistema (el firmware, no el cliente de Mac),
+que se debe resolver antes de continuar v3.
+
+**Compatibilidad de protocolo, verificada por diseño, no por casualidad:** v4 acepta
+tanto `"LR,UD\n"` como `"LR,UD,EMOCION\n"` (ignorando el tercer campo), así que
+[`v3/pico_serial.py`](v3/pico_serial.py) —que ya sabe mandar ambos formatos— no
+necesita ningún cambio para hablar con esta Pico.
+
+**Cómo se verificó sin la Pico física** (no hay una conectada a este entorno):
+- `py_compile` + `ast.parse`: sintaxis válida. Es lo más profundo posible sin
+  `machine` instalado (ese módulo no existe fuera de MicroPython real).
+- La fórmula de pulso del PCA9685, probada de forma aislada (sin `machine`, solo la
+  aritmética): 0°→102, 90°→307, 180°→512 — los mismos valores que produce el
+  original, porque es la misma fórmula, no una reescrita.
+- El parseo de comandos, probado de forma aislada: acepta ambos formatos, recorta
+  valores fuera de 40-140, rechaza basura y líneas incompletas sin lanzar.
+- **No se pudo verificar:** que el PCA9685 responda de verdad por I2C, que los
+  párpados lleguen a una posición visualmente "abierta" en el hardware real, ni que
+  el suavizado se sienta fluido con la latencia real de I2C. Eso depende
+  enteramente de que el usuario lo pruebe con la Pico física — ver
+  [`v4/README-v4.md`](v4/README-v4.md) para cómo desplegarlo (Thonny/`mpremote`) y
+  cómo probarlo.
+
+**No refactorices esto para hacerlo "más testeable" sin que te lo pidan.** El
+usuario pidió explícitamente "el main.py más simple posible" — envolver la lógica en
+clases o abstracciones extra por facilidad de testing iría en contra de ese pedido.
+La verificación de la matemática pura se hizo con scripts sueltos, no integrados al
+fichero final, a propósito.
 
 ## Cómo verificar cambios (todas las versiones)
 
