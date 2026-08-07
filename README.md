@@ -5,8 +5,9 @@ análisis de emociones y (en desarrollo) control de un rastreador facial mecáni
 
 **Estado:** v1 completa y respaldada · v2 completa en código, falta validar con voz
 real · v3 con rastreador facial + enlace serial completos en código, falta validar
-con cámara y hardware real · **v4 completa y validada en hardware real** (los ojos
-siguen el rostro correctamente).
+con cámara y hardware real · v4 completa y validada en hardware real (los ojos
+siguen el rostro correctamente) · v5 (+ cuello y parpadeo) código completo, falta
+validar en hardware real.
 
 ## 📦 Versiones disponibles
 
@@ -102,6 +103,24 @@ python -m pytest tests/ -v        # 19 tests, autónomos, sin tocar v3
 Ver [`v4/README-v4.md`](v4/README-v4.md) para cómo desplegar el firmware
 (Thonny/`mpremote`) y [`v4/PLAN-v4.md`](v4/PLAN-v4.md) para los hitos.
 
+### [v5](v5/) — + Cuello y parpadeo, mientras rastrea 🔄 (código completo, validación pendiente)
+**Estado:** `main.py` de v4 + rotación de cabeza (PAN, amortiguada al 80%) +
+subir/bajar cabeza (TILT, amortiguada al 60%) + parpadeo periódico cada 2-6s, todo
+mientras el rastreo de ojos sigue funcionando igual que en v4. Sin emociones,
+joystick ni modo autónomo todavía.
+
+**Totalmente autónoma, igual que v4:** copia propia de `face_tracker.py` y
+`pico_serial.py` (sin cambios respecto a v4), `.venv` propio, tests propios (24,
+incluyendo 5 nuevos para la matemática del cuello).
+
+```bash
+cd v5 && source .venv/bin/activate
+python face_tracker.py            # rastreo de ojos, sin cambios respecto a v4
+python -m pytest tests/ -v        # 24 tests
+```
+
+Ver [`v5/README-v5.md`](v5/README-v5.md) y [`v5/PLAN-v5.md`](v5/PLAN-v5.md).
+
 ## 📚 Documentación
 
 - [CLAUDE.md](CLAUDE.md) — contexto técnico completo del proyecto (para trabajar en el código)
@@ -116,30 +135,30 @@ Ver [`v4/README-v4.md`](v4/README-v4.md) para cómo desplegar el firmware
 
 - Python 3.9+
 - Clave de API de OpenAI con acceso a la Realtime API
-- Micrófono y altavoces (v1/v2) — cámara adicional para v3/v4
+- Micrófono y altavoces (v1/v2) — cámara adicional para v3/v4/v5
 - v2 y v3 instalan `pysentimiento` (torch + transformers): ~2GB, varios minutos la
-  primera vez. **v4 no** — es mucho más ligero (solo `opencv-python` + `pyserial`),
-  porque no toca voz ni sentimiento
-- v4/main.py es firmware MicroPython: necesita la Raspberry Pi Pico física para esa
-  parte; el resto de v4 (rastreo facial) es Python normal de Mac, con su venv
+  primera vez. **v4 y v5 no** — son mucho más ligeros (solo `opencv-python` +
+  `pyserial`), porque no tocan voz ni sentimiento
+- `main.py` de v4/v5 es firmware MicroPython: necesita la Raspberry Pi Pico física
+  para esa parte; el resto (rastreo facial) es Python normal de Mac, con su venv
 
 ## 📋 Comparativa de versiones
 
-| | v1 | v2 | v3 | v4 |
-|---|---|---|---|---|
-| Dónde corre | Mac | Mac | Mac | Mac (rastreo) + **la Pico** (firmware) |
-| Voz en tiempo real | ✅ | ✅ (hereda de v1) | ✅ (hereda de v2) | — (fuera de alcance a propósito) |
-| Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 | n/a |
-| Análisis de emociones | — | ✅ `pysentimiento`, en consola | ✅ (hereda de v2) | — |
-| Rastreo facial | — | — | 🔄 código listo, falta cámara real | ✅ validado en real |
-| Control de servos (Pico) | — | — | 🔄 código listo, falta hardware real | ✅ validado en real |
-| Estado | ✅ Completa | Código completo, validación pendiente | Código completo, validación pendiente | ✅ Completa y validada |
+| | v1 | v2 | v3 | v4 | v5 |
+|---|---|---|---|---|---|
+| Dónde corre | Mac | Mac | Mac | Mac + **la Pico** | Mac + **la Pico** |
+| Voz en tiempo real | ✅ | ✅ (hereda de v1) | ✅ (hereda de v2) | — (a propósito) | — (a propósito) |
+| Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 | n/a | n/a |
+| Análisis de emociones | — | ✅ `pysentimiento`, en consola | ✅ (hereda de v2) | — | — |
+| Rastreo facial (ojos) | — | — | 🔄 falta cámara real | ✅ validado en real | ✅ (hereda de v4) |
+| Cuello (PAN/TILT) | — | — | — | — | 🔄 código listo, falta hardware |
+| Parpadeo | — | — | — | — | 🔄 código listo, falta hardware |
+| Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | Validación pendiente |
 
 **Nota sobre independencia:** cada carpeta de versión tiene sus propias copias de
 cualquier código que reutilice de otra (nunca lo importa con una ruta cruzada). Por
-eso `face_tracker.py` y `pico_serial.py` existen, idénticos, tanto en `v3/` como en
-`v4/`. Puedes borrar cualquier carpeta de versión anterior y las demás sigues
-funcionando.
+eso `face_tracker.py` y `pico_serial.py` existen, idénticos, en `v3/`, `v4/` y `v5/`.
+Puedes borrar cualquier carpeta de versión anterior y las demás siguen funcionando.
 
 ## 📖 Estructura del proyecto
 
@@ -171,6 +190,13 @@ funcionando.
 │   ├── tests/
 │   ├── README-v4.md
 │   └── PLAN-v4.md
+├── v5/                     # + Cuello (PAN/TILT) y parpadeo periódico
+│   ├── main.py             # Firmware Pico: v4 + cuello amortiguado + parpadeo
+│   ├── face_tracker.py     # Copia autónoma de v4, sin cambios
+│   ├── pico_serial.py      # Copia autónoma de v4, sin cambios
+│   ├── tests/              # 24 tests: los 19 de v4 + 5 nuevos de la math del cuello
+│   ├── README-v5.md
+│   └── PLAN-v5.md
 ├── docs/
 │   └── RASPBERRY-PI.md     # Especificación técnica, aparcada
 ├── CLAUDE.md               # Contexto técnico completo del proyecto
@@ -180,8 +206,8 @@ funcionando.
 
 Cada versión es independiente: su propio venv, requirements y documentación, y sus
 propias copias de cualquier código reutilizado de otra versión (nunca imports entre
-carpetas). v1 no cambia mientras se trabaja en v2, v3 o v4, y puedes borrar cualquier
-versión anterior sin romper las demás.
+carpetas). v1 no cambia mientras se trabaja en v2, v3, v4 o v5, y puedes borrar
+cualquier versión anterior sin romper las demás.
 
 ## ❓ FAQ
 

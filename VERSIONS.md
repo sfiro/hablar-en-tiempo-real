@@ -137,10 +137,40 @@ dentro de la Pico, no en el Mac. Se despliega con Thonny o `mpremote`, no con pi
 
 **Hito 2: Validación con hardware — COMPLETADO**
 
-**Hito 3: Reintroducir complejidad por partes (SIGUIENTE)** (parpadeo → emociones →
-retomar v3)
+**Hito 3: Reintroducir complejidad por partes — en progreso, ver v5.0.0 abajo**
 
 Detalle completo: [`v4/PLAN-v4.md`](v4/PLAN-v4.md).
+
+---
+
+## v5.0.0 🔄 — + Cuello y parpadeo (código completo, validación pendiente)
+
+**Objetivo:** siguiendo el Hito 3 de v4, reintroducir parpadeo y movimiento de
+cuello (sin emociones todavía) mientras el rastreo de ojos sigue funcionando igual.
+
+**Autónoma, igual que v4:** copia propia de `face_tracker.py` y `pico_serial.py`
+(sin cambios respecto a v4), `.venv` propio, 24 tests propios (19 heredados +
+5 nuevos para la matemática del cuello).
+
+**Hito 1: Autonomía completa (COMPLETADO)**
+- ✅ Copiado todo lo del lado Mac desde `v4/`, sin cambios de lógica
+
+**Hito 2: Cuello — PAN/TILT (COMPLETADO en código)**
+- ✅ El cuello sigue a los ojos, amortiguado (80% horizontal, 60% vertical — mismos
+  factores que `ojosMecanicos/main.py`), con el mismo suavizado EMA que los ojos
+- ✅ Verificado sin hardware: el cuello siempre se mueve menos que los ojos, nunca
+  sale de su rango 40-140
+
+**Hito 3: Parpadeo periódico (COMPLETADO en código)**
+- ✅ Cada 2-6 segundos, independiente de si hay rastreo activo — bloquea el bucle
+  ~230ms mientras dura, igual que en el original
+
+**Hito 4: Validación con hardware (SIGUIENTE, necesita al usuario)**
+- [ ] Confirmar que el cuello se ve orgánico siguiendo los ojos
+- [ ] Confirmar que el parpadeo no causa tirones perceptibles en el rastreo
+- [ ] Confirmar que la fuente de alimentación aguanta ojos+cuello+párpados a la vez
+
+Detalle completo: [`v5/PLAN-v5.md`](v5/PLAN-v5.md).
 
 ---
 
@@ -190,6 +220,7 @@ cd v2             # entra en v2
 | v2.0.0  | 🔄 Código completo, falta validar con voz real | macOS |
 | v3.0.0  | 🔄 Código completo (Hito 0 y 1), falta cámara/Pico reales | macOS + Raspberry Pi Pico (opcional) |
 | v4.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
+| v5.0.0  | 🔄 Código completo, falta validar en hardware real | Raspberry Pi Pico (MicroPython) |
 
 ---
 

@@ -26,22 +26,29 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
   sin la complejidad de emociones/joystick/modo autónomo. **Completa y validada en
   hardware real**: el usuario confirmó que el rastreo funciona y los ojos siguen el
   rostro correctamente.
+- **v5** — v4 + cuello (PAN/TILT, siguiendo a los ojos, amortiguado) + parpadeo
+  periódico (cada 2-6s, sin depender de si hay rastreo activo). Sigue sin emociones,
+  joystick ni modo autónomo — es el siguiente paso del propio plan que se dejó en
+  v4 ("reintroducir complejidad por partes"). Código completo con tests, falta
+  validar en hardware real.
 
-**Regla del proyecto, válida para todas las versiones incluyendo v4: ninguna versión
-importa código de otra carpeta de versión.** v2 es una copia de v1 con el añadido de
-sentimiento, no un import de v1. v4 tiene sus propias copias de `face_tracker.py` y
-`pico_serial.py` (idénticas a las de v3), no las importa desde `../v3/`. Esto es
-deliberado y se pidió explícitamente: **cada versión debe poder ejecutarse borrando
-todas las demás carpetas de versión.** Si añades una versión nueva que reutiliza
-algo de otra, copia el fichero, no lo importes con una ruta relativa cruzada.
+**Regla del proyecto, válida para todas las versiones: ninguna versión importa
+código de otra carpeta de versión.** v2 es una copia de v1 con el añadido de
+sentimiento, no un import de v1. v4 y v5 tienen sus propias copias de
+`face_tracker.py` y `pico_serial.py` (idénticas entre sí, y con v3), no las importan
+con una ruta relativa cruzada. Esto es deliberado y se pidió explícitamente:
+**cada versión debe poder ejecutarse borrando todas las demás carpetas de
+versión.** Si añades una versión nueva que reutiliza algo de otra, copia el
+fichero, no lo importes.
 
-Cada carpeta de versión de Mac (v1/v2/v3, y la parte Mac de v4) tiene su propio
+Cada carpeta de versión de Mac (v1/v2/v3, y la parte Mac de v4/v5) tiene su propio
 `.venv/`, `requirements.txt` y `.env`.
 
-**La única pieza que rompe el patrón de venv es `v4/main.py`:** no tiene entorno
-porque no es Python que corra en el Mac — es firmware MicroPython que se copia a la
-Pico (con Thonny o `mpremote`) y se ejecuta ahí. El resto de `v4/` (`face_tracker.py`,
-`pico_serial.py`, sus tests) sí sigue el patrón normal de venv, igual que v1/v2/v3.
+**La única pieza que rompe el patrón de venv es `main.py` en v4/v5:** no tiene
+entorno porque no es Python que corra en el Mac — es firmware MicroPython que se
+copia a la Pico (con Thonny o `mpremote`) y se ejecuta ahí. El resto de v4/v5
+(`face_tracker.py`, `pico_serial.py`, sus tests) sí sigue el patrón normal de venv,
+igual que v1/v2/v3.
 
 ## Entorno, por versión
 
@@ -262,6 +269,41 @@ usuario pidió explícitamente "el main.py más simple posible" — envolver la 
 clases o abstracciones extra por facilidad de testing iría en contra de ese pedido.
 La verificación de la matemática pura se hizo con scripts sueltos, no integrados al
 fichero final, a propósito.
+
+## v5 — + Cuello y parpadeo
+
+[`v5/main.py`](v5/main.py) extiende `v4/main.py` (no `ojosMecanicos/main.py`
+directamente) con dos cosas, siguiendo el pedido explícito del usuario: "rotación de
+la cabeza, el subir y bajar de la cabeza y el parpadeo, mientras hace el rastreo de
+los ojos".
+
+- **Cuello (PAN/TILT):** se añadieron como dos ejes más al mismo sistema
+  `objetivo_actual`/`posicion_actual`/EMA que ya usaban LR/UD en v4. El objetivo de
+  PAN/TILT se recalcula cada vuelta del bucle a partir del objetivo de LR/UD (no del
+  valor ya suavizado), con los factores de amortiguación de `ojosMecanicos/main.py`
+  (0.8 horizontal, 0.6 vertical) — copiados literalmente, no reinventados.
+- **Parpadeo:** temporizador aleatorio de 2-6s, independiente de si hay comandos
+  serial llegando (a diferencia del original, donde el parpadeo automático solo
+  ocurre en modo inactivo). Reabre siempre a la posición fija "abierta" de v4, no a
+  un objetivo variable, porque v5 no tiene emociones ni sincronía párpado-mirada
+  todavía.
+
+**v5 es autónoma exactamente igual que v4:** [`v5/face_tracker.py`](v5/face_tracker.py)
+y [`v5/pico_serial.py`](v5/pico_serial.py) son copias de las de v4 (sin ningún
+cambio de lógica, solo referencias de documentación actualizadas), con su propio
+`.venv/` y tests. Si arreglas algo en esos dos ficheros estando en v5, ese arreglo no
+se propaga a v3/v4 — replícalo a mano si aplica.
+
+**Cómo se verificó, sin la Pico física** (no hay una conectada a este entorno):
+- Lo mismo que v4 (sintaxis, fórmula de pulso, 19 tests heredados)
+- **Nuevo:** [`v5/tests/test_main_math.py`](v5/tests/test_main_math.py) duplica la
+  fórmula de amortiguación del cuello (no se puede importar `main.py` directamente,
+  usa `machine`) y confirma que el cuello siempre se mueve *menos* que los ojos,
+  nunca igual ni más, y que nunca sale de su rango 40-140 ni en los extremos
+- **No verificado, pendiente de hardware real:** que el cuello se vea orgánico de
+  verdad, que el bloqueo de ~230ms de cada parpadeo no se note como un tirón en el
+  rastreo, y que la fuente de alimentación aguante ojos+cuello+párpados a la vez —
+  v4 solo movía 2 servos activamente, v5 mueve hasta 6
 
 ## Cómo verificar cambios (todas las versiones)
 
