@@ -13,7 +13,7 @@
 # encima. Ver ../v4/README-v4.md para el porqué y el plan de qué se añade después.
 #
 # Acepta también "LR,UD,EMOCION\n" (el formato de v3) ignorando el tercer campo: así
-# el Mac (pico_serial.py de v3) no necesita ningún cambio para hablar con esta versión.
+# el pico_serial.py de v4 (o el de v3) no necesita ningún cambio para hablar con esta versión.
 
 import machine
 import math

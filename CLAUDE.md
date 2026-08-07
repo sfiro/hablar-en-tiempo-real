@@ -18,23 +18,32 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
 - **v3** — v2 + rastreo facial por cámara y (opcional) control de servos vía una
   Raspberry Pi Pico. Código completo (Hito 0 y 1), falta validar con cámara y
   hardware real.
-- **v4** — firmware simplificado de la Pico (**MicroPython, no Mac**), aparcado a
-  propósito de la secuencia v1→v2→v3: antes de retomar la integración de voz, se
-  decidió organizar el `main.py` de la Pico con lo mínimo imprescindible (ojos
-  abiertos + rastreo x,y), sin la complejidad de emociones/joystick/modo autónomo.
-  Código completo, falta validar en la Pico real.
+- **v4** — rastreo facial + servos, simplificado y **completamente autónomo**:
+  firmware de Pico (`main.py`, MicroPython) + su propia copia del lado Mac
+  (`face_tracker.py`, `pico_serial.py`, con `.venv/` propio). Se apartó a propósito
+  de la secuencia v1→v2→v3: antes de retomar la integración de voz, se decidió
+  organizar el firmware con lo mínimo imprescindible (ojos abiertos + rastreo x,y),
+  sin la complejidad de emociones/joystick/modo autónomo. **Completa y validada en
+  hardware real**: el usuario confirmó que el rastreo funciona y los ojos siguen el
+  rostro correctamente.
 
-Cada versión de Mac (v1/v2/v3) vive en su propia carpeta con su propio `.venv/`,
-`requirements.txt` y `.env`. **No hay dependencias cruzadas de código** entre
-versiones: v2 es una copia de v1 con el añadido de sentimiento, no un import de v1.
-Es deliberado — permite que v1 quede congelada y estable mientras v2/v3 evolucionan.
+**Regla del proyecto, válida para todas las versiones incluyendo v4: ninguna versión
+importa código de otra carpeta de versión.** v2 es una copia de v1 con el añadido de
+sentimiento, no un import de v1. v4 tiene sus propias copias de `face_tracker.py` y
+`pico_serial.py` (idénticas a las de v3), no las importa desde `../v3/`. Esto es
+deliberado y se pidió explícitamente: **cada versión debe poder ejecutarse borrando
+todas las demás carpetas de versión.** Si añades una versión nueva que reutiliza
+algo de otra, copia el fichero, no lo importes con una ruta relativa cruzada.
 
-**v4 rompe ese patrón a propósito:** no tiene `.venv/` ni `requirements.txt` porque
-no es Python que corra en el Mac — es firmware MicroPython que se copia a la Pico
-(con Thonny o `mpremote`) y se ejecuta ahí, fuera de cualquier entorno virtual. No
-intentes instalarlo con pip ni ejecutarlo con el Python del sistema.
+Cada carpeta de versión de Mac (v1/v2/v3, y la parte Mac de v4) tiene su propio
+`.venv/`, `requirements.txt` y `.env`.
 
-## Entorno, por versión (v1/v2/v3 — v4 no aplica, ver arriba)
+**La única pieza que rompe el patrón de venv es `v4/main.py`:** no tiene entorno
+porque no es Python que corra en el Mac — es firmware MicroPython que se copia a la
+Pico (con Thonny o `mpremote`) y se ejecuta ahí. El resto de `v4/` (`face_tracker.py`,
+`pico_serial.py`, sus tests) sí sigue el patrón normal de venv, igual que v1/v2/v3.
+
+## Entorno, por versión
 
 Cada carpeta tiene su propio venv. Usa siempre el Python de ese venv, nunca el del
 sistema (los certificados TLS y las dependencias están solo ahí):
@@ -204,7 +213,7 @@ solo que los hilos arrancan sin excepción.
 | disgust | NEUTRAL | no hay equivalente; se degrada en vez de inventar uno |
 | others | NEUTRAL | directo |
 
-## v4 — Firmware simplificado de la Pico
+## v4 — Rastreo facial + servos, simplificado y autónomo
 
 [`v4/main.py`](v4/main.py) es un **subconjunto deliberado** de
 [`ojosMecanicos/main.py`](/Users/debbie/Desktop/programacion/ojosMecanicos/main.py):
@@ -222,25 +231,31 @@ versiones no es v1→v2→v3→v4 en el sentido de "cada una añade sobre la úl
 un desvío sobre una pieza distinta del sistema (el firmware, no el cliente de Mac),
 que se debe resolver antes de continuar v3.
 
-**Compatibilidad de protocolo, verificada por diseño, no por casualidad:** v4 acepta
-tanto `"LR,UD\n"` como `"LR,UD,EMOCION\n"` (ignorando el tercer campo), así que
-[`v3/pico_serial.py`](v3/pico_serial.py) —que ya sabe mandar ambos formatos— no
-necesita ningún cambio para hablar con esta Pico.
+**v4 es autónoma, no solo el firmware.** [`v4/face_tracker.py`](v4/face_tracker.py) y
+[`v4/pico_serial.py`](v4/pico_serial.py) son **copias** de las de `v3/` (no imports),
+con su propio `v4/requirements.txt` (más ligero que el de v3: solo `opencv-python<5`
+y `pyserial`, sin `pysentimiento`/`torch` porque v4 no toca voz ni sentimiento) y su
+propio `.venv/`. Los 19 tests de v3 (`test_face_tracker.py`, `test_pico_serial.py`)
+también están duplicados en `v4/tests/` y pasan igual, ejecutados enteramente dentro
+de `v4/` sin tocar `v3/`. Esto se pidió explícitamente: cada versión debe poder
+ejecutarse borrando todas las demás. Si tocas `face_tracker.py` o `pico_serial.py`
+para arreglar algo en v4, ese arreglo **no** se propaga solo a v3 — hay que
+replicarlo a mano en la otra copia si aplica también ahí.
 
-**Cómo se verificó sin la Pico física** (no hay una conectada a este entorno):
-- `py_compile` + `ast.parse`: sintaxis válida. Es lo más profundo posible sin
-  `machine` instalado (ese módulo no existe fuera de MicroPython real).
-- La fórmula de pulso del PCA9685, probada de forma aislada (sin `machine`, solo la
-  aritmética): 0°→102, 90°→307, 180°→512 — los mismos valores que produce el
-  original, porque es la misma fórmula, no una reescrita.
-- El parseo de comandos, probado de forma aislada: acepta ambos formatos, recorta
-  valores fuera de 40-140, rechaza basura y líneas incompletas sin lanzar.
-- **No se pudo verificar:** que el PCA9685 responda de verdad por I2C, que los
-  párpados lleguen a una posición visualmente "abierta" en el hardware real, ni que
-  el suavizado se sienta fluido con la latencia real de I2C. Eso depende
-  enteramente de que el usuario lo pruebe con la Pico física — ver
-  [`v4/README-v4.md`](v4/README-v4.md) para cómo desplegarlo (Thonny/`mpremote`) y
-  cómo probarlo.
+**Compatibilidad de protocolo, verificada por diseño, no por casualidad:** v4 acepta
+tanto `"LR,UD\n"` como `"LR,UD,EMOCION\n"` (ignorando el tercer campo), así que su
+propio `pico_serial.py` —que ya sabe mandar ambos formatos— habla con esta Pico sin
+ningún cambio.
+
+**Cómo se verificó:**
+- Antes de tener la Pico delante: `py_compile` + `ast.parse` (sintaxis), la fórmula
+  de pulso del PCA9685 aislada (0°→102, 90°→307, 180°→512, idéntica al original), y
+  el parseo de comandos (acepta ambos formatos, recorta 40-140, rechaza basura).
+- **Con la Pico real, por el usuario:** confirmado que el PCA9685 responde por I2C,
+  los párpados quedan abiertos, y el rastreo x,y funciona con el suavizado sintiéndose
+  fluido — "los ojos lo siguen perfectamente". Las tres cosas que no se podían
+  verificar desde este entorno quedaron confirmadas.
+- Los 19 tests, corridos dentro de `v4/.venv` sin ninguna referencia a `v3/`.
 
 **No refactorices esto para hacerlo "más testeable" sin que te lo pidan.** El
 usuario pidió explícitamente "el main.py más simple posible" — envolver la lógica en

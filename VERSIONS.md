@@ -108,26 +108,37 @@ Detalle completo: [`v3/PLAN-v3.md`](v3/PLAN-v3.md).
 
 ---
 
-## v4.0.0 🔄 — Firmware simplificado de la Pico (código completo, validación pendiente)
+## v4.0.0 ✅ — Rastreo facial + servos, simplificado y autónomo (completa y validada)
 
 **Objetivo:** antes de retomar v3, organizar el firmware de la Pico con lo mínimo
 imprescindible: ojos abiertos + rastreo x,y, sin la complejidad de emociones,
 joystick, modo autónomo y parpadeo del `main.py` completo de `ojosMecanicos`.
 
-**Distinta de v1/v2/v3:** no es código de Mac con `.venv` — es firmware MicroPython
-que corre dentro de la Raspberry Pi Pico. Se copia con Thonny o `mpremote`, no se
-instala con pip.
+**Autónoma, no solo el firmware.** Tiene su propia copia de `face_tracker.py` y
+`pico_serial.py` (idénticas a las de v3, no importadas desde ahí), con su propio
+`.venv/` y `requirements.txt` — más ligero que el de v3, porque v4 no toca voz ni
+sentimiento. Solo `v4/main.py` (el firmware) rompe el patrón de venv, porque corre
+dentro de la Pico, no en el Mac. Se despliega con Thonny o `mpremote`, no con pip.
 
-**Hito 1: `main.py` mínimo (COMPLETADO en código, falta hardware real)**
+**Hito 1: `main.py` mínimo (COMPLETADO Y VALIDADO EN HARDWARE REAL)**
 - ✅ `v4/main.py`: solo párpados abiertos al arrancar + rastreo x,y con suavizado EMA
-- ✅ Protocolo compatible con v3 sin cambios (`v3/pico_serial.py` funciona tal cual)
+- ✅ Protocolo compatible con v3 sin cambios (el `pico_serial.py` propio de v4
+  funciona tal cual)
 - ✅ Verificado sin hardware: sintaxis, fórmula de pulso PCA9685 (0°→102, 90°→307,
   180°→512), parseo de comandos con casos límite y basura
-- [ ] Validar en la Pico real — no hay una conectada a este entorno
+- ✅ **Validado en la Pico real por el usuario:** el rastreo funciona, los ojos
+  siguen la cara "perfectamente"
 
-**Hito 2: Validación con hardware** (necesita al usuario, con la Pico física)
+**Hito 1.5: Autonomía completa (COMPLETADO)**
+- ✅ `face_tracker.py` y `pico_serial.py` copiados a `v4/` (no importados desde v3)
+- ✅ `v4/requirements.txt` propio, `v4/.venv` propio
+- ✅ 19 tests duplicados en `v4/tests/`, corridos dentro de `v4/.venv` sin ninguna
+  referencia a `v3/` — confirmado que pasan de forma completamente aislada
 
-**Hito 3: Reintroducir complejidad por partes** (parpadeo → emociones → retomar v3)
+**Hito 2: Validación con hardware — COMPLETADO**
+
+**Hito 3: Reintroducir complejidad por partes (SIGUIENTE)** (parpadeo → emociones →
+retomar v3)
 
 Detalle completo: [`v4/PLAN-v4.md`](v4/PLAN-v4.md).
 
@@ -178,7 +189,7 @@ cd v2             # entra en v2
 | v1.0.0  | ✅ Completa | macOS, Linux |
 | v2.0.0  | 🔄 Código completo, falta validar con voz real | macOS |
 | v3.0.0  | 🔄 Código completo (Hito 0 y 1), falta cámara/Pico reales | macOS + Raspberry Pi Pico (opcional) |
-| v4.0.0  | 🔄 Código completo, falta validar en la Pico real | Raspberry Pi Pico (MicroPython) |
+| v4.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
 
 ---
 

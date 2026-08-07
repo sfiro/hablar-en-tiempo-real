@@ -5,8 +5,8 @@ análisis de emociones y (en desarrollo) control de un rastreador facial mecáni
 
 **Estado:** v1 completa y respaldada · v2 completa en código, falta validar con voz
 real · v3 con rastreador facial + enlace serial completos en código, falta validar
-con cámara y hardware real · v4 (firmware de la Pico, simplificado) escrito, falta
-validar en hardware real.
+con cámara y hardware real · **v4 completa y validada en hardware real** (los ojos
+siguen el rostro correctamente).
 
 ## 📦 Versiones disponibles
 
@@ -78,23 +78,29 @@ python -m pytest tests/ -v        # 19 tests, sin necesitar cámara ni Pico
 
 Ver [`v3/README-v3.md`](v3/README-v3.md) y [`v3/PLAN-v3.md`](v3/PLAN-v3.md).
 
-### [v4](v4/) — Firmware simplificado de la Pico 🔄 (escrito, validación pendiente)
-**Estado:** `main.py` simplificado, con solo dos cosas: párpados abiertos al
-arrancar (sin parpadeo) y rastreo x,y por serial. Falta validar en la Pico real.
+### [v4](v4/) — Rastreo facial + servos, simplificado y autónomo ✅ (validado en hardware real)
+**Estado:** Completa. Firmware `main.py` simplificado (párpados abiertos al
+arrancar, sin parpadeo, + rastreo x,y por serial) **más su propia copia del lado
+Mac** (`face_tracker.py`, `pico_serial.py`, con `.venv` propio). **Confirmado en
+hardware real: el rastreo funciona y los ojos siguen el rostro correctamente.**
 
-**Esta versión es distinta a v1/v2/v3**: no es código de Mac con `.venv` — es
-firmware MicroPython que corre dentro de la Raspberry Pi Pico. Antes de retomar la
-integración de voz de v3, se decidió apartar la complejidad del `main.py` completo
-de `ojosMecanicos` (emociones, joystick, modo autónomo, parpadeo) para confirmar
-primero que el rastreo x,y funciona bien con una base simple.
+Antes de retomar la integración de voz de v3, se decidió apartar la complejidad del
+`main.py` completo de `ojosMecanicos` (emociones, joystick, modo autónomo, parpadeo)
+para confirmar primero que el rastreo x,y funciona bien con una base simple.
 
-- Protocolo compatible con v3 sin cambios: acepta `"LR,UD"` y `"LR,UD,EMOCION"`
-  (ignorando la emoción), así `v3/pico_serial.py` habla con esta Pico sin tocar nada
-- Verificado sin hardware: sintaxis, fórmula de pulso PCA9685, parseo de comandos.
-  **No verificado en la Pico real** — no hay una conectada a este entorno
+**Totalmente autónoma: no depende de ningún fichero de v1/v2/v3.** `face_tracker.py`
+y `pico_serial.py` son copias de las de v3, no imports — puedes borrar `v3/` entero y
+`v4/` sigue funcionando igual. Solo `v4/main.py` (el firmware) es distinto: no tiene
+`.venv` porque corre en la Pico, no en el Mac.
 
-Ver [`v4/README-v4.md`](v4/README-v4.md) para cómo desplegarlo (Thonny/`mpremote`)
-y [`v4/PLAN-v4.md`](v4/PLAN-v4.md) para los hitos.
+```bash
+cd v4 && source .venv/bin/activate
+python face_tracker.py            # rastreo completo: cámara → x,y → servos
+python -m pytest tests/ -v        # 19 tests, autónomos, sin tocar v3
+```
+
+Ver [`v4/README-v4.md`](v4/README-v4.md) para cómo desplegar el firmware
+(Thonny/`mpremote`) y [`v4/PLAN-v4.md`](v4/PLAN-v4.md) para los hitos.
 
 ## 📚 Documentación
 
@@ -110,21 +116,30 @@ y [`v4/PLAN-v4.md`](v4/PLAN-v4.md) para los hitos.
 
 - Python 3.9+
 - Clave de API de OpenAI con acceso a la Realtime API
-- Micrófono y altavoces (v1/v2) — cámara adicional para v3
-- v2 instala `pysentimiento` (torch + transformers): ~2GB, varios minutos la primera vez
-- v4 es firmware MicroPython: necesita la Raspberry Pi Pico física, no Python de Mac
+- Micrófono y altavoces (v1/v2) — cámara adicional para v3/v4
+- v2 y v3 instalan `pysentimiento` (torch + transformers): ~2GB, varios minutos la
+  primera vez. **v4 no** — es mucho más ligero (solo `opencv-python` + `pyserial`),
+  porque no toca voz ni sentimiento
+- v4/main.py es firmware MicroPython: necesita la Raspberry Pi Pico física para esa
+  parte; el resto de v4 (rastreo facial) es Python normal de Mac, con su venv
 
 ## 📋 Comparativa de versiones
 
 | | v1 | v2 | v3 | v4 |
 |---|---|---|---|---|
-| Dónde corre | Mac | Mac | Mac | **la Pico** (MicroPython) |
+| Dónde corre | Mac | Mac | Mac | Mac (rastreo) + **la Pico** (firmware) |
 | Voz en tiempo real | ✅ | ✅ (hereda de v1) | ✅ (hereda de v2) | — (fuera de alcance a propósito) |
 | Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 | n/a |
 | Análisis de emociones | — | ✅ `pysentimiento`, en consola | ✅ (hereda de v2) | — |
-| Rastreo facial | — | — | 🔄 código listo, falta cámara real | n/a (recibe x,y ya calculado) |
-| Control de servos (Pico) | — | — | 🔄 código listo, falta hardware real | 🔄 ojos abiertos + x,y, falta hardware real |
-| Estado | ✅ Completa | Código completo, validación pendiente | Código completo, validación pendiente | Código completo, validación pendiente |
+| Rastreo facial | — | — | 🔄 código listo, falta cámara real | ✅ validado en real |
+| Control de servos (Pico) | — | — | 🔄 código listo, falta hardware real | ✅ validado en real |
+| Estado | ✅ Completa | Código completo, validación pendiente | Código completo, validación pendiente | ✅ Completa y validada |
+
+**Nota sobre independencia:** cada carpeta de versión tiene sus propias copias de
+cualquier código que reutilice de otra (nunca lo importa con una ruta cruzada). Por
+eso `face_tracker.py` y `pico_serial.py` existen, idénticos, tanto en `v3/` como en
+`v4/`. Puedes borrar cualquier carpeta de versión anterior y las demás sigues
+funcionando.
 
 ## 📖 Estructura del proyecto
 
@@ -149,8 +164,11 @@ y [`v4/PLAN-v4.md`](v4/PLAN-v4.md) para los hitos.
 │   ├── tests/
 │   ├── README-v3.md
 │   └── PLAN-v3.md
-├── v4/                     # Firmware simplificado de la Pico (MicroPython, no Mac)
-│   ├── main.py             # Ojos abiertos + rastreo x,y, sin emociones/joystick
+├── v4/                     # Rastreo facial + servos, simplificado y autónomo
+│   ├── main.py             # Firmware Pico (MicroPython): ojos abiertos + rastreo x,y
+│   ├── face_tracker.py     # Copia autónoma de v3 (Mac, con .venv propio)
+│   ├── pico_serial.py      # Copia autónoma de v3 (Mac, con .venv propio)
+│   ├── tests/
 │   ├── README-v4.md
 │   └── PLAN-v4.md
 ├── docs/
@@ -160,8 +178,10 @@ y [`v4/PLAN-v4.md`](v4/PLAN-v4.md) para los hitos.
 └── README.md               # Este fichero
 ```
 
-Cada versión es independiente: su propio venv, requirements y documentación. v1 no
-cambia mientras se trabaja en v2 o v3.
+Cada versión es independiente: su propio venv, requirements y documentación, y sus
+propias copias de cualquier código reutilizado de otra versión (nunca imports entre
+carpetas). v1 no cambia mientras se trabaja en v2, v3 o v4, y puedes borrar cualquier
+versión anterior sin romper las demás.
 
 ## ❓ FAQ
 

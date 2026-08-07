@@ -1,19 +1,28 @@
-# Versión 4.0 — Firmware simplificado de la Pico 👁️
+# Versión 4.0 — Rastreo facial + servos, simplificado y autónomo 👁️
 
-**Esta versión es distinta a v1/v2/v3.** No es código de Mac con su propio `.venv`:
-es **firmware MicroPython** que corre *dentro* de la Raspberry Pi Pico. No hay
-`requirements.txt` ni entorno virtual — se copia el fichero a la Pico y ahí se
-ejecuta solo.
-
-**Objetivo:** antes de retomar la integración de voz (v3), organizar el `main.py` de
+**Objetivo:** antes de retomar la integración de voz (v3), organizar el firmware de
 la Pico para que funcione bien con lo mínimo imprescindible: **ojos abiertos +
 rastreo x,y**. Nada de emociones, joystick, modo autónomo ni parpadeo todavía — eso
 es la complejidad de `ojosMecanicos/main.py`, y se decidió apartarla para tener
 primero una base simple y confiable.
 
-**Estado:** código escrito y verificado en lo que se puede verificar sin hardware
-(sintaxis, matemática de suavizado y de pulso PCA9685, parseo de comandos). **No
-probado en la Pico real** — no hay una conectada a este entorno de trabajo.
+**Estado:** ✅ completa y validada en hardware real. El usuario confirmó: el rastreo
+funciona y los ojos siguen la cara "perfectamente".
+
+**Esta versión es autónoma:** no depende de ningún fichero de v1/v2/v3. Tiene sus
+propias copias de todo lo que necesita — igual que v2 no importa código de v1, v4 no
+importa código de v3. Puedes borrar `v1/`, `v2/` y `v3/` enteros y `v4/` seguiría
+funcionando igual.
+
+## Dos partes, dos mundos de ejecución distintos
+
+| | Firmware (Pico) | Lado Mac |
+|---|---|---|
+| Fichero | `main.py` | `face_tracker.py`, `pico_serial.py` |
+| Dónde corre | **dentro** de la Raspberry Pi Pico | tu Mac |
+| Lenguaje | MicroPython | Python normal (CPython) |
+| Entorno | ninguno — se copia el fichero a la Pico | `.venv/` propio, con `requirements.txt` |
+| Cómo se despliega | Thonny o `mpremote` (ver más abajo) | `pip install -r requirements.txt` |
 
 ---
 
@@ -45,23 +54,22 @@ Acepta también `"LR,UD,EMOCION\n"` **ignorando el tercer campo** — así el
 Todo lo quitado sigue existiendo, probado y documentado, en `ojosMecanicos/main.py`
 y `ojosMecanicos/model.md`. Esto no es un rediseño: es un **subconjunto** deliberado.
 
-## Cómo se probó (y qué falta)
+## Cómo se probó
 
-**Verificado sin hardware:**
+**Verificado sin hardware, antes de tener la Pico delante:**
 - Sintaxis válida (`py_compile`, parseo AST) — MicroPython no está instalado en este
-  Mac, así que esto es lo más profundo que se puede comprobar sin la Pico
+  Mac, así que esto era lo más profundo que se podía comprobar sin la Pico
 - La fórmula de pulso del PCA9685 (idéntica a `ojosMecanicos/main.py`, no
   reinventada) da los valores esperados en los extremos y el centro: 0°→102,
   90°→307, 180°→512
 - El parseo de comandos acepta `"LR,UD"` y `"LR,UD,EMOCION"`, recorta valores fuera
   de 40-140, y rechaza basura (texto no numérico, líneas incompletas) sin lanzar
 
-**No verificado, necesita la Pico física:**
-- Que el PCA9685 responda de verdad por I2C con esta secuencia de inicialización
-- Que los párpados lleguen a una posición que de verdad se vea "abierta" en el
-  hardware (los valores vienen de `model.md`, pero solo se confirman mirando el rig)
-- Que el suavizado EMA en el bucle real (con la latencia de I2C y `time.sleep`) se
-  sienta igual de fluido que en `ojosMecanicos/main.py`, del que se copió tal cual
+**Verificado con la Pico real, por el usuario:**
+- ✅ El PCA9685 responde bien por I2C con esta secuencia de inicialización
+- ✅ Los párpados quedan en una posición abierta reconocible en el rig físico
+- ✅ El rastreo x,y funciona y el suavizado EMA se siente fluido — los ojos siguen
+  la cara "perfectamente"
 
 ## Cómo desplegarlo
 
@@ -89,13 +97,28 @@ original con emociones/joystick/modo autónomo, haz una copia de seguridad prime
 intacto en `ojosMecanicos/main.py` en tu Mac — la Pico y el Mac son sistemas de
 archivos distintos.
 
-## Cómo probarlo una vez desplegado
+## Cómo probarlo, todo desde esta misma carpeta
 
-Desde el Mac, con la versión de v3 ya probada (`v3/pico_serial.py` funciona sin
-cambios):
+### Instalación del lado Mac (una vez)
 
 ```bash
-cd "../v3" && source .venv/bin/activate
+cd v4
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Rastreo facial completo (cámara → x,y → servos)
+
+```bash
+python face_tracker.py                # con ventana de depuración, detecta la Pico sola
+python face_tracker.py --no-window     # sin ventana, solo consola
+python face_tracker.py --no-pico       # solo prueba la cámara, sin tocar la Pico
+```
+
+### O a mano, sin cámara, solo para probar el enlace serial
+
+```bash
 python3 -c "
 from pico_serial import PicoLink, encontrar_puerto_mac
 puerto = encontrar_puerto_mac()
@@ -111,6 +134,13 @@ O más simple, con un monitor serial (Thonny, `screen`, `mpremote`) y escribiend
 mano `120,60` + Enter — deberías ver el eco `Serial: LR=120, UD=60` y los ojos
 moviéndose hacia esa posición, suavemente, sin saltos.
 
+### Tests (sin cámara ni Pico reales)
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/ -v   # 19 tests
+```
+
 ## Próximos pasos (fuera de esta versión)
 
 Una vez confirmado que esta base simple funciona en el hardware real:
@@ -123,5 +153,6 @@ Una vez confirmado que esta base simple funciona en el hardware real:
 
 - [`ojosMecanicos/main.py`](/Users/debbie/Desktop/programacion/ojosMecanicos/main.py) — firmware completo, del que se extrajo este subconjunto
 - [`ojosMecanicos/model.md`](/Users/debbie/Desktop/programacion/ojosMecanicos/model.md) — documentación de hardware, canales y protocolo
-- [`../v3/pico_serial.py`](../v3/pico_serial.py) — cliente Mac, compatible sin cambios
+- [`face_tracker.py`](face_tracker.py) y [`pico_serial.py`](pico_serial.py) — copias
+  autónomas de las de `v3/`, sin dependencia entre carpetas de versión
 - [PLAN-v4.md](PLAN-v4.md) — hitos
