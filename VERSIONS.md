@@ -80,9 +80,17 @@ una Raspberry Pi Pico que mueve servos.
   reconexión)
 - ✅ Tabla de mapeo emoción→vocabulario de la Pico definida
 
-**Hito 1: Rastreo facial standalone (SIGUIENTE)**
-- [ ] Adaptar el rastreador de rostro (OpenCV) a `v3/face_tracker.py`
-- [ ] Módulo de serial hacia la Pico (`v3/pico_serial.py`), con reconexión y latido
+**Hito 1: Rastreo facial standalone (COMPLETADO en código, falta hardware real)**
+- ✅ `v3/face_tracker.py`: clase `FaceTracker` headless + script standalone con
+  ventana opcional (`--no-window`)
+- ✅ `v3/pico_serial.py`: `PicoLink` con reconexión y latido
+- ✅ 19 tests (`v3/tests/`), todos pasan, sin necesitar cámara ni Pico reales
+- ✅ Dos bugs reales corregidos: `opencv-python` 5.0 eliminó `CascadeClassifier`
+  (fijado `<5`); el chequeo de reconexión rompía con puertos de prueba inyectados
+  (aislado para hardware real únicamente)
+- [ ] Validar con cámara real — bloqueado por permisos de macOS en este entorno,
+  necesita que el usuario lo pruebe en su propia Terminal
+- [ ] Validar con la Pico física, si está disponible
 
 **Hito 2: Integración con voz + sentimiento**
 - [ ] Hilo de cámara + hilo de Pico arrancados desde `realtime_voice.py`

@@ -4,8 +4,9 @@ Extensión de v2 que añade rastreo facial por cámara: las coordenadas x,y del 
 muestran en consola junto al sentimiento, y opcionalmente se envían por serial a una
 Raspberry Pi Pico que mueve un par de servos (sistema de "ojos mecánicos").
 
-**Estado:** Planificación (Hito 0 completado: investigación de un proyecto hermano ya
-existente). Sin código todavía.
+**Estado:** Hito 0 y Hito 1 completos (investigación + rastreador facial + enlace
+serial, ambos con tests). Falta validar con cámara y hardware real — no se puede hacer
+desde este entorno, necesita permiso de macOS concedido en una Terminal interactiva.
 **Plataforma:** macOS (webcam integrada), igual que v1/v2.
 **Base:** v2 completo (voz + sentimiento) + rastreo facial con OpenCV + serial opcional.
 
@@ -143,16 +144,23 @@ desde esta vía — son alcanzables por otros modos de control de `ojosMecanicos
   solo las coordenadas en consola sin enviarlas a ningún lado (mismo patrón que
   `rastreoCara_Mac.py`, que ya maneja `pico is None` sin fallar)
 
-## Preguntas abiertas (para decidir antes de implementar)
+## Preguntas abiertas, ya resueltas en el Hito 1
 
-- **¿Ventana de vídeo o headless?** `rastreoCara_Mac.py` abre `cv2.imshow` para
-  depurar visualmente. En una conversación de voz de verdad, ¿tiene sentido una
-  ventana, o mejor correr sin GUI y confiar solo en la consola?
-- **¿Detector Haar Cascade o algo mejor?** El código de referencia usa
-  `haarcascade_frontalface_default.xml`, rápido pero impreciso con giros de cabeza.
-  Suficiente para un primer hito; se puede mejorar después.
-- **¿Qué pasa si no hay cámara disponible?** Debe degradar igual que la Pico ausente:
-  seguir la conversación sin rastreo, con un aviso claro, no un traceback.
+- **¿Ventana de vídeo o headless?** Resuelto: la clase `FaceTracker` es headless por
+  diseño (nunca toca `cv2.imshow`); el script standalone `face_tracker.py` sí abre
+  ventana por defecto (útil para calibrar), desactivable con `--no-window`. Cuando se
+  integre con la voz (Hito 2), se usará la clase sin ventana.
+- **¿Detector Haar Cascade o algo mejor?** Se mantiene Haar Cascade
+  (`haarcascade_frontalface_default.xml`) para ser fiel al código de referencia.
+  Con un efecto colateral real: `opencv-python` 5.0 movió `CascadeClassifier` a
+  `opencv-contrib-python`; se fijó la versión a `<5` en `requirements.txt` en vez de
+  migrar ya a la API DNN nueva (`cv2.FaceDetectorYN`), que sería la vía recomendada
+  por OpenCV para un proyecto nuevo, pero no es fiel al original y es más trabajo del
+  que pide este hito.
+- **¿Qué pasa si no hay cámara disponible?** En el script standalone de este hito,
+  sale con un mensaje claro (no hay nada que probar sin cámara). La degradación con
+  gracia dentro de la app completa de voz —seguir conversando sin rastreo— es
+  responsabilidad del Hito 2, no de este script de prueba aislado.
 
 ---
 

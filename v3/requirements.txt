@@ -1,0 +1,18 @@
+# v3.0 — Rastreo facial + servos
+# Incluye todas las dependencias de v2 + visión por computador + serial
+
+# Dependencias de v2 (sin cambios)
+websockets>=13.0
+sounddevice>=0.4.7
+numpy>=1.26
+python-dotenv>=1.0
+certifi>=2024.2.2
+pysentimiento>=0.7.0
+
+# Nuevas para v3 (rastreo facial + servos)
+# Fijado a la serie 4.x: OpenCV 5.0 movió CascadeClassifier a opencv-contrib-python
+# (módulo xobjdetect) y recomienda el detector DNN nuevo (cv2.FaceDetectorYN) para
+# proyectos nuevos. Aquí priorizamos ser fieles al código de referencia de
+# ojosMecanicos, que usa CascadeClassifier directamente.
+opencv-python>=4.9.0,<5
+pyserial>=3.5

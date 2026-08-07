@@ -23,37 +23,78 @@ código". Resumen:
 
 ---
 
-## Hito 1: Rastreo facial standalone 📋 (siguiente)
+## Hito 1: Rastreo facial standalone ✅ (código completo y con tests; falta cámara real)
 
 **Objetivo:** Adaptar `rastreoCara_Mac.py` a v3, funcionando solo (sin voz todavía),
 para validar la cámara y el detector antes de integrar nada más.
 
-### Tarea 1.1: Copiar y adaptar el rastreador
+### Tarea 1.1: Copiar y adaptar el rastreador — DONE (código)
 
-- [ ] Copiar `rastreoCara_Mac.py` a `v3/face_tracker.py`
-- [ ] Extraer la lógica de detección + suavizado EMA + zona muerta a una función/clase
-      reutilizable (`FaceTracker`), separada del bucle de `cv2.imshow` — para poder
-      usarla luego desde un hilo sin ventana si se decide ir headless
-- [ ] Decidir la pregunta abierta de README-v3.md: ¿ventana de depuración opcional
-      con un flag `--show-window`, o siempre headless?
-- [ ] Manejar cámara no disponible sin traceback (aviso claro + seguir sin rastreo)
+- [x] `v3/face_tracker.py`: lógica extraída a una clase `FaceTracker.procesar(frame)`,
+      headless por diseño — no toca `cv2.imshow` en absoluto, solo `cv2.resize`,
+      `cv2.cvtColor` y el clasificador. Devuelve un dict con `grado_x`, `grado_y`,
+      `bbox`, `detectado`, `cambio_significativo`
+- [x] Pregunta abierta resuelta: **flag `--no-window`**, ventana ON por defecto en el
+      script standalone (útil para calibrar); la clase headless es la que se
+      reutilizará en el Hito 2, la ventana vive solo en el bucle de prueba
+- [x] Cámara no disponible: `cap.isOpened()` se comprueba explícitamente, mensaje
+      claro con la ruta de permisos de macOS, `sys.exit(1)` sin traceback — **no**
+      degrada en silencio en este script standalone (si no hay cámara, no hay nada
+      que probar); la degradación con gracia dentro de la app completa de voz es
+      responsabilidad del Hito 2, no de este script de prueba
+- [x] **Corrección real encontrada adaptando el código:** el original usaba
+      `cv2.COLOR_RGB2GRAY` sobre un frame que en realidad viene en BGR de
+      `cv2.VideoCapture`. Cambiado a `COLOR_BGR2GRAY`. Efecto visual mínimo (los
+      pesos de canal son parecidos) pero es la conversión correcta.
+- [x] **Bug real de dependencias encontrado instalando, no en el código:**
+      `opencv-python` 5.0 (recién publicado) eliminó `cv2.CascadeClassifier` del
+      paquete base — se movió a `opencv-contrib-python`. Fijado
+      `opencv-python>=4.9,<5` en `requirements.txt` para no reescribir la detección
+      a la API DNN nueva justo en el primer hito.
+- [x] Tests de la lógica pura (`tests/test_face_tracker.py`, 9 tests): mapeo,
+      suavizado EMA, zona muerta, con una cascada falsa inyectada — un detector Haar
+      no se puede probar de forma fiable contra una imagen sintética, así que se
+      separa "la matemática de seguimiento" (testeable) de "si detecta un rostro de
+      verdad" (solo verificable con cámara real)
 
-**Criterio:** `python face_tracker.py` corre solo, muestra x,y en consola (y opcionalmente
-una ventana), funciona con o sin Pico conectada — igual que el original.
+**Verificado sin cámara real:** construcción de `FaceTracker`, toda la lógica de
+mapeo/suavizado/zona muerta con cascada inyectada, y el manejo de "cámara no
+disponible" — confirmado en ejecución real: en este entorno, macOS niega el permiso
+de cámara a un proceso no interactivo (`OpenCV: not authorized to capture video`), y
+el script respondió exactamente como estaba diseñado: mensaje claro, sin traceback,
+salida limpia. Exactamente el mismo tipo de limitación que ya se dio con el permiso
+de micrófono en v1 — se resuelve concediendo el permiso en una Terminal real, no
+desde aquí.
 
-### Tarea 1.2: Módulo de serial hacia la Pico
+**Pendiente, necesita a alguien con cámara real:**
+- [ ] Confirmar que el detector reconoce un rostro real y lo sigue con suavizado
+      razonable (la lógica ya está probada; falta la pieza que no se puede simular)
+- [ ] Con la ventana de depuración (`--no-window` desactivado), confirmar visualmente
+      que el rectángulo/punto siguen al rostro
 
-- [ ] `v3/pico_serial.py`: adaptar el patrón de `server_realtime.py` de
-      `ojosMecanicos` — cola de comandos, hilo `daemon=True`, reconexión comprobando
-      si el path `/dev/cu.usbmodem...` sigue existiendo, latido cada 1s mientras haya
-      control activo
-- [ ] Función `enviar(lr, ud, emocion=None)` que construye `"{lr},{ud},{emocion}\n"`
-      o `"{lr},{ud}\n"` si no hay emoción, y la encola
-- [ ] Sin Pico conectada: debe seguir funcionando, solo sin escribir a ningún puerto
-      (igual que `pico is None` en el código original)
+### Tarea 1.2: Módulo de serial hacia la Pico — DONE
 
-**Criterio:** con la Pico conectada, mover el rostro delante de la cámara mueve los
-servos. Sin Pico, no falla nada, solo no hay movimiento físico.
+- [x] `v3/pico_serial.py`: `PicoLink`, con cola de comandos, hilo `daemon=True`,
+      reconexión (comprobando si el path `/dev/cu.usbmodem...` sigue existiendo — solo
+      con el driver real, ver nota de test más abajo), latido cada 1s
+- [x] `enviar(lr, ud, emocion=None)`: construye `"{lr},{ud},{emocion}\n"` o
+      `"{lr},{ud}\n"`, valida grados (se recortan a 40-140) y emoción (debe ser una de
+      las 10 del vocabulario de la Pico, o lanza `ValueError`)
+- [x] Sin Pico conectada: `enviar()` no falla ni bloquea, igual que `pico is None` en
+      el original
+- [x] Tests con un `serial_factory` inyectado (`tests/test_pico_serial.py`, 10 tests):
+      formato de comando, cola, **latido verificado con reenvíos reales contados**,
+      reconexión tras fallo de escritura
+- [x] **Bug real encontrado escribiendo el propio test:** la comprobación de "¿sigue
+      existiendo el puerto?" usaba `glob.glob()` sobre el path tal cual — con un
+      puerto de prueba inyectado (que no existe en el filesystem real), el hilo
+      creía que la Pico se había desconectado justo después de conectar. Se corrigió
+      para que ese chequeo solo aplique con el driver real de pyserial, no con un
+      `serial_factory` inyectado.
+
+**Criterio cumplido** para todo lo que no requiere hardware. Con la Pico conectada
+de verdad (pendiente, como el punto anterior): mover el rostro delante de la cámara
+debería mover los servos.
 
 ---
 
@@ -135,6 +176,9 @@ v3.0.0 está lista cuando:
 
 ---
 
-**Última actualización:** Agosto 4, 2026
-**Estado actual:** Hito 0 completo. Sin código de v3 todavía — siguiente paso es
-Hito 1 (rastreo facial standalone).
+**Última actualización:** Agosto 7, 2026
+**Estado actual:** Hito 0 y Hito 1 completos en código y tests (19 tests pasan).
+Falta la validación con cámara real (necesita permiso de macOS concedido en una
+Terminal interactiva) y, si está disponible, con la Pico física — ninguna de las dos
+se puede hacer desde este entorno. Siguiente paso: Hito 2 (integración con voz +
+sentimiento), o primero validar Hito 1 con hardware real si se prefiere en ese orden.

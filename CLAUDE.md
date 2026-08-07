@@ -99,16 +99,61 @@ con el modelo real (una frase por cada una de las 6 emociones, marcadas
 
 Detalle de hitos y estado: [`v2/PLAN-v2.md`](v2/PLAN-v2.md).
 
-## v3 — + Rastreo facial y servos (planificación)
+## v3 — + Rastreo facial y servos
 
-Sin código todavía. Antes de escribir nada, se investigó a fondo un **proyecto
-hermano y anterior del mismo usuario**,
+Hito 0 (investigación) y Hito 1 (rastreador facial + enlace serial, ambos con tests)
+completos. Falta validar con cámara y hardware real. Antes de escribir nada, se
+investigó a fondo un **proyecto hermano y anterior del mismo usuario**,
 [`ojosMecanicos`](/Users/debbie/Desktop/programacion/ojosMecanicos/) — un sistema de
 servos (Raspberry Pi Pico) con varios intentos previos de integrar voz y cámara.
 Léelo antes de tocar v3: [`v3/README-v3.md`](v3/README-v3.md), sección "Antes de
 escribir código".
 
-**Lo que se decidió reutilizar de esa investigación** (probado, no reinventar):
+[`v3/face_tracker.py`](v3/face_tracker.py) tiene la clase `FaceTracker`
+(detección + EMA + zona muerta, **headless por diseño** — nunca toca `cv2.imshow`,
+para poder usarse desde un hilo de fondo en el Hito 2) y un script standalone con
+ventana opcional (`--no-window`) para probar la cámara sola.
+[`v3/pico_serial.py`](v3/pico_serial.py) tiene `PicoLink` (cola de comandos, hilo
+`daemon=True`, reconexión, latido). Ninguno de los dos se ha probado todavía con
+hardware real (cámara con permiso concedido, Pico física) — solo con dobles de
+prueba inyectados. 19 tests en [`v3/tests/`](v3/tests/), todos pasan.
+
+**Dos bugs reales encontrados en este hito, ninguno en la lógica de negocio en sí:**
+1. `opencv-python` 5.0 (versión recién publicada al escribir esto) eliminó
+   `cv2.CascadeClassifier` del paquete base — se movió a `opencv-contrib-python`.
+   Se instaló primero sin fijar versión y falló con `AttributeError` al construir
+   `FaceTracker`. Fijado `opencv-python>=4.9,<5` en `requirements.txt`.
+2. El chequeo de reconexión de `PicoLink` (`glob.glob(puerto)` para ver si el
+   `/dev/cu.usbmodem...` sigue existiendo) rompía los tests: con un puerto de prueba
+   inyectado que no existe en el filesystem real, el hilo creía que la Pico se
+   había desconectado justo después de "conectar". Se corrigió para que ese chequeo
+   solo se haga con el driver real de pyserial, nunca con un `serial_factory`
+   inyectado — `_puerto_sigue_existiendo()` lo aísla.
+
+**Corrección menor adaptando el código de referencia:** `rastreoCara_Mac.py` convertía
+a gris con `cv2.COLOR_RGB2GRAY` sobre un frame que en realidad viene en BGR de
+`cv2.VideoCapture`. Cambiado a `COLOR_BGR2GRAY` en `face_tracker.py`. Efecto mínimo
+(los pesos de canal son parecidos) pero es la conversión correcta.
+
+**Cómo se probó la lógica sin hardware:** los Haar cascades no se pueden probar de
+forma fiable contra una imagen sintética (necesitan rasgos faciales reales), así que
+`tests/test_face_tracker.py` inyecta una cascada falsa (`FakeCascada`) que devuelve
+bboxes fijas, y testea solo la matemática (mapeo a grados, suavizado EMA, zona
+muerta) — no la precisión de detección en sí. Mismo patrón que
+`tests/test_pico_serial.py` con un `serial_factory` falso. Esto separa "¿la lógica de
+seguimiento es correcta?" (testeable sin hardware) de "¿detecta rostros de verdad?"
+(solo verificable con cámara real).
+
+**Confirmado en ejecución real, no solo supuesto:** al intentar abrir la cámara en
+este entorno (sandboxed, no interactivo), macOS respondió
+`OpenCV: not authorized to capture video` — el mismo tipo de bloqueo de permisos que
+ya se dio con el micrófono en v1. El código respondió como estaba diseñado: mensaje
+claro, sin traceback, `sys.exit(1)`. La verificación real de detección de rostro
+necesita que el usuario conceda el permiso de cámara en su propia Terminal.
+
+### Lo reutilizado de la investigación de ojosMecanicos
+
+**Probado, no reinventar:**
 - **Protocolo serial hacia la Pico:** `"{LR},{UD},{EMOCION}\n"` (o sin emoción,
   `"{LR},{UD}\n"`), enteros 40-140 para los grados de servo, `EMOCION` opcional en
   mayúsculas de un enum de 10 valores (`NEUTRAL`, `FELIZ`, `ENOJADO`, `TRISTE`,
