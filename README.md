@@ -1,133 +1,144 @@
 # Hablar en tiempo real 🎙️
 
-Asistente de conversación por voz en tiempo real con la Realtime API de OpenAI.
+Asistente de conversación por voz en tiempo real con la Realtime API de OpenAI, con
+análisis de emociones y (en desarrollo) control de un rastreador facial mecánico.
 
-**Estado:** Versión 1 completada y respaldada. Desarrollo de versión 2 en progreso.
+**Estado:** v1 completa y respaldada · v2 completa en código, falta validar con voz
+real · v3 en planificación (sin código todavía).
 
 ## 📦 Versiones disponibles
 
-Cada versión está en su propia carpeta con código, entorno y documentación independientes.
+Cada versión está en su propia carpeta con código, entorno y documentación
+independientes. Cada una construye sobre la anterior.
 
-### [v1](v1/) — Versión 1.0 ✅ 
-**Estado:** Completa y respaldada. Lanzamiento inicial.
+### [v1](v1/) — Voz en tiempo real ✅
+**Estado:** Completa y respaldada (tag `v1.0.0`).
 
-Características:
-- ✅ Conversación WebRTC en navegador (macOS)
-- ✅ Versión terminal con paliativos contra eco
-- ✅ Especificación para Raspberry Pi 5
+- Conversación WebRTC en navegador (macOS), con cancelación de eco real del navegador
+- Versión terminal por WebSocket, con paliativos contra eco (half-duplex, detector de
+  nivel) para cuando no hay navegador
+- Especificación para Raspberry Pi 5 (aparcada, ver [VERSIONS.md](VERSIONS.md))
 
-**Instalar v1:**
 ```bash
-cd v1
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env          # Edita con tu clave de OpenAI
-python webrtc_server.py       # o python realtime_voice.py
+cd v1 && source .venv/bin/activate
+python webrtc_server.py       # recomendado: WebRTC con navegador
+# o
+python realtime_voice.py      # terminal, WebSocket
 ```
 
-Ver [`v1/README-v1.md`](v1/README-v1.md) para documentación completa.
+Ver [`v1/README-v1.md`](v1/README-v1.md).
 
-### [v2](v2/) — Versión 2 🚀
-**Estado:** En desarrollo.
+### [v2](v2/) — + Análisis de emociones ✅ (código), 🔄 (validación con voz)
+**Estado:** Implementado y con tests contra el modelo real; falta que alguien hable de
+verdad con `--sentiment` para confirmar que las emociones mostradas tienen sentido.
 
-Objetivos:
-- Implementación completa en Raspberry Pi 5
-- PipeWire con AEC por hardware
-- Servicio systemd para arranque automático
-- Mejoras de performance y estabilidad
+- Clasifica cada frase (tuya y del asistente) en una de las 6 emociones de Ekman +
+  neutral, usando [`pysentimiento`](https://github.com/pysentimiento/pysentimiento)
+  (RoBERTuito para español)
+- El análisis corre en un hilo aparte: nunca bloquea el audio
+- `--stats` da un resumen de emociones al terminar la conversación
+- Documentadas con datos reales, no inventados: el modelo acierta claro en frases
+  elaboradas y falla más en exclamaciones cortas (ver limitaciones en
+  [`v2/README-v2.md`](v2/README-v2.md))
 
-**Próximamente:** Código y documentación en `v2/`.
+```bash
+cd v2 && source .venv/bin/activate
+python realtime_voice.py --sentiment --stats
+```
+
+Ver [`v2/README-v2.md`](v2/README-v2.md) y [`v2/PLAN-v2.md`](v2/PLAN-v2.md).
+
+### [v3](v3/) — + Rastreo facial y servos 📋 (planificación)
+**Estado:** Sin código todavía. Se investigó a fondo un proyecto hermano
+(`ojosMecanicos`) antes de empezar, para reusar lo que ya funciona ahí (protocolo
+serial hacia una Raspberry Pi Pico, patrón de threading) y no repetir un bug de
+diseño real que se encontró (una integración de voz+emoción+cámara que arrancaba los
+hilos pero nunca conectaba la emoción con el movimiento).
+
+- Objetivo: mostrar las coordenadas x,y del rostro en consola junto al sentimiento, y
+  opcionalmente enviarlas (junto con la emoción, traducida a su vocabulario) por
+  serial a una Pico que mueve servos
+
+Ver [`v3/README-v3.md`](v3/README-v3.md) y [`v3/PLAN-v3.md`](v3/PLAN-v3.md).
 
 ## 📚 Documentación
 
-- [v1/README-v1.md](v1/README-v1.md) — Guía completa de v1
-- [v1/CLAUDE-v1.md](v1/CLAUDE-v1.md) — Detalles técnicos de v1
-- [docs/RASPBERRY-PI.md](docs/RASPBERRY-PI.md) — Especificación técnica para Pi 5
-- [VERSIONS.md](VERSIONS.md) — Hoja de ruta de versiones
-
-## 🚀 Inicio rápido
-
-**Quiero usar v1 ahora:**
-```bash
-cd v1
-source .venv/bin/activate
-python webrtc_server.py  # WebRTC con navegador (recomendado)
-# o
-python realtime_voice.py # Terminal con WebSocket
-```
-
-**Quiero descargar solo v1:**
-```bash
-git clone --branch v1.0.0 <repo-url> hablar-realtime-v1
-# o descargar ZIP desde releases en GitHub
-```
-
-**Quiero esperar a v2 (Raspberry Pi):**
-Mira [VERSIONS.md](VERSIONS.md) para el cronograma.
+- [CLAUDE.md](CLAUDE.md) — contexto técnico completo del proyecto (para trabajar en el código)
+- [VERSIONS.md](VERSIONS.md) — hoja de ruta e historial de versiones
+- [v1/README-v1.md](v1/README-v1.md) · [v1/CLAUDE-v1.md](v1/CLAUDE-v1.md)
+- [v2/README-v2.md](v2/README-v2.md) · [v2/PLAN-v2.md](v2/PLAN-v2.md) · [v2/INSTALL-v2.md](v2/INSTALL-v2.md)
+- [v3/README-v3.md](v3/README-v3.md) · [v3/PLAN-v3.md](v3/PLAN-v3.md)
+- [docs/RASPBERRY-PI.md](docs/RASPBERRY-PI.md) — especificación para Pi 5, aparcada
 
 ## 🔧 Requisitos
 
 - Python 3.9+
 - Clave de API de OpenAI con acceso a la Realtime API
-- Micrófono y altavoces (o auriculares para v1 terminal)
-- Git (opcional, para clonar)
+- Micrófono y altavoces (v1/v2) — cámara adicional para v3
+- v2 instala `pysentimiento` (torch + transformers): ~2GB, varios minutos la primera vez
 
 ## 📋 Comparativa de versiones
 
-| Característica | v1 | v2 |
-|---|---|---|
-| Plataforma | macOS, Linux | **Raspberry Pi 5** |
-| AEC | Navegador (WebRTC) | PipeWire del sistema |
-| Tipo | WebRTC + Terminal | Terminal headless |
-| Barge-in | ✅ natural | ✅ con AEC real |
-| Autoarranque | Manual | systemd service |
-| Estado | ✅ Completa | 🚀 En desarrollo |
-
-## 🔗 GitHub
-
-Repositorio: (ver instrucciones abajo para crear)
-
-Descargar versión específica:
-- v1.0.0: `git clone --branch v1.0.0`
-- ZIP: GitHub → Releases → v1.0.0
+| | v1 | v2 | v3 |
+|---|---|---|---|
+| Voz en tiempo real | ✅ | ✅ (hereda de v1) | ✅ (hereda de v2) |
+| Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 |
+| Análisis de emociones | — | ✅ `pysentimiento`, en consola | ✅ (hereda de v2) |
+| Rastreo facial | — | — | 📋 en planificación |
+| Control de servos (Pico) | — | — | 📋 en planificación |
+| Estado | ✅ Completa | Código completo, validación pendiente | Planificación |
 
 ## 📖 Estructura del proyecto
 
 ```
 .
-├── v1/                           # Versión 1.0 (completa)
-│   ├── realtime_voice.py        # Cliente WebSocket
-│   ├── webrtc_server.py         # Servidor SDP
-│   ├── requirements.txt
-│   ├── .env.example
+├── v1/                     # Voz en tiempo real (completa)
+│   ├── realtime_voice.py   # Cliente WebSocket
+│   ├── webrtc_server.py    # Servidor SDP (recomendado)
 │   ├── static/
 │   ├── README-v1.md
 │   └── CLAUDE-v1.md
-├── v2/                           # Versión 2 (en desarrollo)
-│   └── README-v2.md  (próximamente)
+├── v2/                     # + Análisis de emociones
+│   ├── realtime_voice.py   # v1 + --sentiment
+│   ├── sentiment_analyzer.py
+│   ├── tests/
+│   ├── README-v2.md
+│   ├── PLAN-v2.md
+│   └── INSTALL-v2.md
+├── v3/                     # + Rastreo facial y servos (planificación)
+│   ├── README-v3.md
+│   └── PLAN-v3.md
 ├── docs/
-│   └── RASPBERRY-PI.md          # Especificación técnica
-├── VERSIONS.md                   # Hoja de ruta
-└── README.md                     # Este fichero
+│   └── RASPBERRY-PI.md     # Especificación técnica, aparcada
+├── CLAUDE.md               # Contexto técnico completo del proyecto
+├── VERSIONS.md             # Hoja de ruta
+└── README.md               # Este fichero
 ```
 
-Cada versión es **independiente**: su propio venv, documentación y código. Puedes trabajar en v2 mientras v1 sigue siendo estable y respaldada.
+Cada versión es independiente: su propio venv, requirements y documentación. v1 no
+cambia mientras se trabaja en v2 o v3.
 
 ## ❓ FAQ
 
-**P: ¿Puedo usar v1 mientras trabajas en v2?**
-R: Sí. v1 es estable y completa. v2 está en desarrollo paralelo.
+**¿Puedo usar v1 o v2 mientras se trabaja en v3?**
+Sí. Cada versión vive en su carpeta con su propio entorno; trabajar en v3 no toca v1 ni v2.
 
-**P: ¿Cómo bajo solo v1 sin todo el proyecto?**
-R: `git clone --branch v1.0.0` (clona solo esa rama), o descarga el ZIP desde Releases en GitHub.
+**¿Cómo bajo solo una versión?**
+`git clone --branch v1.0.0 <repo>` para v1. v2 y v3 aún no tienen tag propio (ver
+[VERSIONS.md](VERSIONS.md)).
 
-**P: ¿Qué cambios trae v2?**
-R: Implementación en Raspberry Pi 5 con PipeWire AEC. Ver [VERSIONS.md](VERSIONS.md).
+**¿Por qué v2 dice "código completo, validación pendiente"?**
+El análisis de emociones está probado contra el modelo real con tests automatizados,
+pero falta que alguien mantenga una conversación de voz real con `--sentiment` para
+confirmar que lo mostrado en consola tiene sentido con una conversación hablada, no
+solo con texto de prueba.
 
-**P: ¿Se pierden cambios de v1 cuando paso a v2?**
-R: No. Cada versión está en su carpeta. v1 no cambia.
+**¿Qué es `ojosMecanicos`?**
+Un proyecto hermano y anterior del mismo usuario: un sistema de servos (una Raspberry
+Pi Pico moviendo "ojos" mecánicos) con su propio historial de intentos de integrar
+voz y cámara. v3 reutiliza su protocolo serial y su patrón de threading, ya probados
+ahí, en vez de reinventarlos. Ver [`v3/README-v3.md`](v3/README-v3.md).
 
 ---
 
-**Última actualización:** Agosto 2026 — v1.0.0 lanzada
+**Última actualización:** Agosto 4, 2026

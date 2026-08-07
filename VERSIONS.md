@@ -30,52 +30,73 @@ python realtime_voice.py     # Terminal
 
 ---
 
-## v2.0.0 🚀 — En desarrollo
+## v2.0.0 🔄 — Código completo, validación pendiente
 
-**Objetivo:** Implementar en Raspberry Pi 5 con AEC por sistema operativo.
+**Objetivo cambiado respecto al plan original:** en vez de Raspberry Pi 5, v2 pasó a
+ser análisis de emociones en tiempo real. Raspberry Pi 5 se aparcó — la especificación
+en [`docs/RASPBERRY-PI.md`](docs/RASPBERRY-PI.md) sigue siendo válida, pero no es el
+objetivo actual de v2. Se retomará como una versión futura si hace falta.
 
-**Hito 1: Especificación (COMPLETADO)**
-- ✅ Analizar arquitectura de audio en Pi OS Trixie
-- ✅ Documentar configuración de PipeWire con `module-echo-cancel`
-- ✅ Definir estructura de carpetas y pasos de instalación
-- ✅ Documento: [`docs/RASPBERRY-PI.md`](docs/RASPBERRY-PI.md)
+**Corrección importante durante el desarrollo:** el primer modelo elegido
+(`bert-base-multilingual-uncased-sentiment`) en realidad da estrellas de opinión de
+producto (1-5), no una emoción. Se sustituyó por `pysentimiento`, verificado antes de
+escribir la versión final: clasifica de verdad las 6 emociones de Ekman + neutral.
 
-**Hito 2: Implementación (PRÓXIMO)**
-- [ ] Configurar PipeWire en Pi 5 (pasos 4.1-4.3 de RASPBERRY-PI.md)
-- [ ] Adaptar `realtime_voice.py` con parámetros `--input-device` / `--output-device`
-- [ ] Probar AEC con grabación
-- [ ] Desactivar paliativos de v1 (`--no-half-duplex`)
-- [ ] Crear servicio systemd para arranque automático
+**Hito 1: Análisis básico (COMPLETADO Y VERIFICADO)**
+- ✅ `sentiment_analyzer.py` con `pysentimiento` (RoBERTuito para español)
+- ✅ Integración en `realtime_voice.py` sin bloquear el audio (`run_in_executor`)
+- ✅ Visualización en consola: emoji + etiqueta + confianza
+- ✅ `--stats`: resumen de emociones al terminar la conversación
+- ✅ Dos bugs reales encontrados y corregidos en ejecución real (ver CLAUDE.md)
 
-**Hito 3: Validación**
-- [ ] Pruebas de conversación: sin autointerrupción, barge-in funcional
-- [ ] Pruebas de estabilidad: 1h de conversación
-- [ ] Consumo de CPU/RAM en reposo
-- [ ] Reconexión automática tras caída de red
+**Hito 2: Validación y refinamiento (COMPLETADO salvo un punto)**
+- ✅ Tests de integración con el modelo real: las 6 emociones de Ekman, todos pasan
+- ✅ Umbral de confianza documentado con datos reales (no supuestos)
+- [ ] **Conversación real hablada** — la única tarea que falta en todo v2, y depende
+  de que alguien hable de verdad con `--sentiment` (no se puede automatizar)
 
-**Hito 4: Documentación**
-- [ ] README v2 con instrucciones paso a paso
-- [ ] Guía de troubleshooting (PipeWire, clock drift, distorsión)
-- [ ] Script de instalación automática
+**Descarga:** aún sin tag propio; código en `v2/` sobre `main`.
 
-**Estimado:** Setembro 2026 (sujeto a revisión)
-
-**Rama de desarrollo:** `main` (cambios en carpeta `v2/`)
+**Uso:**
+```bash
+cd v2
+python realtime_voice.py --sentiment --stats
+```
 
 ---
 
-## v3.0.0 📋 — Planeado
+## v3.0.0 📋 — Rastreo facial y servos (planificación)
 
-**Objetivo:** Mejoras de experiencia y características avanzadas.
+**Objetivo:** Mostrar la posición x,y del rostro en consola junto al sentimiento, y
+opcionalmente enviarla —junto con la emoción, traducida a su vocabulario— por serial a
+una Raspberry Pi Pico que mueve servos.
 
-**Candidatas:**
-- **Wake word detection:** "Hey Claude", "Hablar" → arrancar conversación
-- **Multi-sesión:** varios usuarios/conversaciones simultáneas
-- **Integración HA:** Home Assistant, Node-RED
-- **UI opcional:** dashboard web para configuración remota
-- **AEC macOS:** PyObjC + `AVAudioEngine` (Voice Processing I/O)
+**Hito 0: Investigación (COMPLETADO)**
+- ✅ Investigado un proyecto hermano (`ojosMecanicos`) antes de escribir código
+- ✅ Confirmado que no existe ahí una integración funcional voz+emoción+cámara+servos
+- ✅ Identificado y documentado un bug de diseño real en su intento de puente (hilos
+  arrancados, pero la emoción nunca conectada al movimiento — código muerto)
+- ✅ Protocolo serial de la Pico confirmado y reutilizable (formato, baud, latido,
+  reconexión)
+- ✅ Tabla de mapeo emoción→vocabulario de la Pico definida
 
-**Estimado:** Q4 2026 / Q1 2027
+**Hito 1: Rastreo facial standalone (SIGUIENTE)**
+- [ ] Adaptar el rastreador de rostro (OpenCV) a `v3/face_tracker.py`
+- [ ] Módulo de serial hacia la Pico (`v3/pico_serial.py`), con reconexión y latido
+
+**Hito 2: Integración con voz + sentimiento**
+- [ ] Hilo de cámara + hilo de Pico arrancados desde `realtime_voice.py`
+- [ ] x,y visible en consola junto al sentimiento
+- [ ] Sentimiento cableado de verdad al comando serial, con test que lo confirme —
+  la lección aprendida de `ojosMecanicos`
+
+**Hito 3: Validación con hardware real** (cámara, y si está disponible, la Pico)
+
+**Hito 4: Documentación**
+
+Detalle completo: [`v3/PLAN-v3.md`](v3/PLAN-v3.md).
+
+**Estimado:** sin fecha todavía, depende de completar la validación de v2 primero.
 
 ---
 
@@ -119,11 +140,11 @@ cd v2             # entra en v2
 
 ## Calendario
 
-| Versión | Estado | Fecha | Plataforma |
-|---------|--------|-------|-----------|
-| v1.0.0  | ✅ Completa | Ago 2026 | macOS, Linux |
-| v2.0.0  | 🚀 En desarrollo | Sep 2026 | Raspberry Pi 5 |
-| v3.0.0  | 📋 Planeado | Q4 2026 | TBD |
+| Versión | Estado | Plataforma |
+|---------|--------|-----------|
+| v1.0.0  | ✅ Completa | macOS, Linux |
+| v2.0.0  | 🔄 Código completo, falta validar con voz real | macOS |
+| v3.0.0  | 📋 Planificación (Hito 0 completo, sin código) | macOS + Raspberry Pi Pico (opcional) |
 
 ---
 
