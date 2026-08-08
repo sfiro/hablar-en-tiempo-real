@@ -104,12 +104,57 @@ PAN.
 **Confirmado por el usuario:** con `PARPADEO_ACTIVO = False` no tiembla; con
 `True`, sí. El parpadeo es el disparador.
 
-**Siguiente ajuste, ya aplicado:** `ESPACIADO_PARPADEO_S` subido de 10ms a 50ms —
-los 4 servos de párpados aceleran menos a la vez durante el cierre/apertura, para
-que sus picos de corriente se solapen menos. El parpadeo completo pasa de ~230ms a
-~550ms (algo más lento, pero sigue leyéndose como parpadeo). Pendiente de que el
-usuario confirme si esto elimina el temblor o si hay que subir el valor todavía
-más — es un ajuste incremental, no una solución garantizada a la primera.
+**Ajuste probado:** `ESPACIADO_PARPADEO_S` subido de 10ms a 50ms — los 4 servos de
+párpados aceleran menos a la vez durante el cierre/apertura, para que sus picos de
+corriente se solapen menos. El parpadeo completo pasa de ~230ms a ~550ms.
+
+**Resultado real: no ayudó, empeoró.** El temblor pasó de "cada ~5s" a "continuo,
+sin pausas, desde el arranque". Confirmado que el despliegue fue correcto y que
+ocurre incluso sin `face_tracker.py` corriendo (descarta ruido de cámara
+amplificado por PAN/TILT). Releído `main.py` completo tres veces sin encontrar
+ningún bug de lógica en la temporización — es idéntica al patrón que ya usa
+`ojosMecanicos/main.py` con éxito.
+
+Se añadieron prints de diagnóstico
+(`[parpadeo] han pasado Xms, Y vueltas de bucle desde el anterior`) que convierten
+"se siente continuo" en datos medibles. Pendiente de que el usuario reporte qué
+imprime el monitor serial de Thonny — en particular, si el mensaje de arranque
+también se repite solo (indicaría que la Pico se reinicia en bucle, un problema
+más serio y distinto: brownout de la fuente).
+
+## Alternativa en diagnóstico: PWM directo desde la Pico, sin PCA9685
+
+Ante el empeoramiento inesperado, se propuso una vía distinta: generar el PWM de
+cada servo directamente desde los pines de la Pico (`machine.PWM`), sin pasar por
+el PCA9685 ni por I2C. Implementado en
+[`main_pwm_directo.py`](main_pwm_directo.py), con la misma funcionalidad
+(ojos+cuello+parpadeo) y el mismo protocolo serial.
+
+**Qué SÍ puede descartar:** cualquier problema específico del chip PCA9685 o de la
+comunicación I2C con él (ruido en el bus, un estado propio del chip al arrancar).
+**Qué NO puede arreglar:** si la causa real es que la fuente de alimentación no
+aguanta el pico de corriente de varios servos moviéndose a la vez, cambiar de
+PCA9685 a PWM directo no cambia nada — los servos siguen tirando de la misma
+corriente, de la misma fuente. Esa hipótesis solo se descarta con hardware (una
+fuente con más margen, o un condensador de buffer en el riel de los servos).
+
+**Mapeo de pines** (cada par comparte "slice" de PWM en el RP2040, sin conflicto
+porque los 8 servos usan la misma frecuencia de 50Hz):
+`LR=GP2 UD=GP3 TL=GP4 BL=GP5 TR=GP6 BR=GP7 PAN=GP8 TILT=GP9`.
+
+**Verificado sin hardware:** la conversión de grados a pulso da la misma posición
+física que la fórmula del PCA9685 — diferencia menor a 5 microsegundos en todo el
+rango 0°-180°, verificado con una comparación numérica directa entre ambas fórmulas.
+
+**Aviso sin confirmar, paralelo al de `/OE`:** los GPIOs de la Pico también
+empiezan en alta impedancia (flotando) hasta que el código los configura como PWM,
+así que en teoría el mismo temblor de arranque original podría reaparecer aquí —
+a menos que se añadan resistencias de pull-down externas en cada una de las 8
+líneas de señal (8 resistencias en vez de la 1 que bastaba con `/OE`, que sí tenía
+un pin único de "deshabilitar todo"). No se ha probado si hace falta.
+
+**Pendiente:** que el usuario pruebe esta versión (renómbrala o cópiala como
+`main.py` en la Pico) y compare el comportamiento contra la versión con PCA9685.
 
 ## Qué NO cambia (deliberado)
 

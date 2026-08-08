@@ -142,6 +142,27 @@ aguanta los 3 subsistemas (ojos + cuello + párpados) moviéndose a la vez.
 - [ ] **Pendiente:** que el usuario corra esto con el monitor serial de Thonny
       abierto y reporte literalmente qué se imprime
 
+### Hito 4.4: Alternativa sin PCA9685 — PWM directo desde la Pico 🔬 (propuesta por el usuario)
+
+- [x] Creado [`main_pwm_directo.py`](main_pwm_directo.py): misma funcionalidad
+      (ojos+cuello+parpadeo, mismo protocolo serial), generando el PWM de cada
+      servo directamente desde `machine.PWM` en 8 pines de la Pico
+      (`LR=GP2 UD=GP3 TL=GP4 BL=GP5 TR=GP6 BR=GP7 PAN=GP8 TILT=GP9`), sin PCA9685
+      ni I2C
+- [x] Verificado sin hardware: la conversión de grados a pulso da la misma
+      posición física que la fórmula del PCA9685 (diferencia < 5µs en todo el
+      rango 0°-180°)
+- [x] Documentado honestamente qué puede y qué no puede descartar esta prueba: SÍ
+      descarta problemas propios del chip PCA9685/I2C; NO descarta un problema de
+      capacidad de la fuente de alimentación, que afectaría igual sin importar
+      quién genere el PWM
+- [x] Documentado un riesgo sin confirmar, paralelo al de `/OE`: los GPIOs de la
+      Pico también flotan hasta que el código los configura, así que el temblor de
+      arranque original podría reaparecer aquí sin resistencias de pull-down (8
+      en vez de la 1 que bastaba con `/OE`)
+- [ ] **Pendiente:** que el usuario pruebe esta versión en la Pico y compare
+      contra la versión con PCA9685 (`main.py`)
+
 ---
 
 ## Definición de listo
