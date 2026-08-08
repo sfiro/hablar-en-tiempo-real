@@ -181,8 +181,7 @@ try:
         ahora = time.ticks_ms()
         if PARPADEO_ACTIVO and time.ticks_diff(ahora, proximo_parpadeo) > 0:
             transcurrido = time.ticks_diff(ahora, ultimo_parpadeo_en)
-            print(f"[parpadeo] han pasado {transcurrido}ms, {vueltas_de_bucle} "
-                  f"vueltas de bucle desde el anterior")
+            print("[parpadeo] han pasado", transcurrido, "ms,", vueltas_de_bucle, "vueltas de bucle desde el anterior")
             parpadear()
             ultimo_parpadeo_en = ahora
             vueltas_de_bucle = 0

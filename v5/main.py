@@ -232,8 +232,7 @@ try:
             # lado. Si imprime ~0s y ~0 vueltas una y otra vez, el disparador
             # está roto y SÍ está parpadeando sin parar.
             transcurrido = time.ticks_diff(ahora, ultimo_parpadeo_en)
-            print(f"[parpadeo] han pasado {transcurrido}ms, {vueltas_de_bucle} "
-                  f"vueltas de bucle desde el anterior")
+            print("[parpadeo] han pasado", transcurrido, "ms,", vueltas_de_bucle, "vueltas de bucle desde el anterior")
             parpadear()
             ultimo_parpadeo_en = ahora
             vueltas_de_bucle = 0
