@@ -101,16 +101,15 @@ vez una fragilidad eléctrica (el pico de corriente de mover 4 servos con solo 1
 de separación) que ya existía pero nunca se había puesto a prueba, igual que con
 PAN.
 
-**Prueba diagnóstica añadida:** `PARPADEO_ACTIVO = True` cerca del principio de
-`main.py`. Cámbialo a `False`, vuelve a desplegar, y observa:
+**Confirmado por el usuario:** con `PARPADEO_ACTIVO = False` no tiembla; con
+`True`, sí. El parpadeo es el disparador.
 
-- Si el temblor de ~5s **desaparece** → confirma que el parpadeo es el disparador.
-  El siguiente paso sería aumentar el espaciado entre servos dentro de
-  `parpadear()` (ahora 10ms, copiado literal del original) para suavizar el pico
-  de corriente — sin tocar nada más, para no mezclar variables.
-- Si el temblor **persiste igual** → el parpadeo no es la causa, y hay que seguir
-  buscando en otro lado (posiblemente relacionado con el mismo diagnóstico de PAN,
-  si ambos ejes comparten alguna fuente de alimentación o conexión).
+**Siguiente ajuste, ya aplicado:** `ESPACIADO_PARPADEO_S` subido de 10ms a 50ms —
+los 4 servos de párpados aceleran menos a la vez durante el cierre/apertura, para
+que sus picos de corriente se solapen menos. El parpadeo completo pasa de ~230ms a
+~550ms (algo más lento, pero sigue leyéndose como parpadeo). Pendiente de que el
+usuario confirme si esto elimina el temblor o si hay que subir el valor todavía
+más — es un ajuste incremental, no una solución garantizada a la primera.
 
 ## Qué NO cambia (deliberado)
 

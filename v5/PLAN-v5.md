@@ -109,12 +109,15 @@ aguanta los 3 subsistemas (ojos + cuello + párpados) moviéndose a la vez.
       si el temblor de ~5s desaparece con `PARPADEO_ACTIVO = False`, confirma que
       el parpadeo es el disparador; si persiste igual, hay que buscar en otro lado
       (no se toca la lógica de rastreo/cuello a la vez, para no mezclar variables)
-- [ ] **Pendiente:** que el usuario pruebe con `PARPADEO_ACTIVO = False` y reporte
-      si el temblor periódico desaparece
-- [ ] Si se confirma: probar aumentar el espaciado entre servos dentro de
-      `parpadear()` (actualmente 10ms, copiado literal del original) para reducir
-      el pico de corriente instantáneo — cambio a probar de uno en uno, después de
-      confirmar la causa, no antes
+- [x] **Confirmado por el usuario:** con `PARPADEO_ACTIVO = False` no tiembla; con
+      `True`, sí. El parpadeo es el disparador, confirmado, no solo sospechado.
+- [x] Aumentado `ESPACIADO_PARPADEO_S` de 10ms a 50ms: menos servos acelerando a
+      la vez durante el cierre/apertura, para que sus picos de corriente se
+      solapen menos. El parpadeo completo pasa de ~230ms a ~550ms (más lento,
+      pero sigue leyéndose como parpadeo, no como "ojos cerrándose").
+- [ ] **Pendiente:** que el usuario pruebe con `PARPADEO_ACTIVO = True` y el nuevo
+      espaciado, y confirme si el temblor desaparece o si hace falta subir
+      `ESPACIADO_PARPADEO_S` todavía más
 
 ---
 

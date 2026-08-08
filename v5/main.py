@@ -106,7 +106,15 @@ ALPHA = 0.1  # mismo suavizado que la versión completa, para los 4 ejes con EMA
 
 # Interruptor de diagnóstico: si el temblor periódico persiste con esto en False,
 # el parpadeo queda descartado como causa y hay que seguir buscando en otro lado.
+# Confirmado en hardware real: con esto en False no tiembla; con True, sí — el
+# parpadeo es el disparador. Ver ESPACIADO_PARPADEO_S para el siguiente ajuste.
 PARPADEO_ACTIVO = True
+
+# Separación entre el movimiento de cada servo de párpado durante el parpadeo.
+# Empezó en 10ms (igual que ojosMecanicos/main.py) y causaba que los picos de
+# corriente de los 4 servos se solaparan lo suficiente para temblar visiblemente.
+# Subido a 50ms como primer intento; si sigue temblando, sube este valor más.
+ESPACIADO_PARPADEO_S = 0.05
 
 EJES = ("LR", "UD", "PAN", "TILT")
 CANAL_DE_EJE = {"LR": CANAL_LR, "UD": CANAL_UD, "PAN": CANAL_PAN, "TILT": CANAL_TILT}
@@ -170,16 +178,22 @@ def actualizar_objetivo_cuello():
 
 
 def parpadear():
-    """Cierra los 4 párpados de forma escalonada (10ms de separación, para no pedir
-    toda la corriente de golpe), espera, y los vuelve a abrir. Bloquea el bucle
-    principal unos ~230ms mientras dura — igual que en ojosMecanicos/main.py."""
+    """Cierra los 4 párpados de forma escalonada, espera, y los vuelve a abrir.
+    Bloquea el bucle principal mientras dura — igual que en ojosMecanicos/main.py.
+
+    Confirmado en hardware real: con 10ms de separación (el valor original) los 4
+    servos coinciden dentro de la ventana de pico de corriente de cada uno, y esa
+    suma causaba un temblor visible en todos los servos cada vez que parpadeaba.
+    Subido a 50ms: menos servos acelerando a la vez, para que sus picos de
+    corriente se solapen menos. Si sigue temblando, sube ESPACIADO_PARPADEO_S más;
+    si se ve demasiado lento/robótico, se puede bajar con cuidado."""
     for canal in (CANAL_TL, CANAL_BL, CANAL_TR, CANAL_BR):
         pca.mover_servo(canal, PARPADOS_CERRADOS[canal])
-        time.sleep(0.01)
+        time.sleep(ESPACIADO_PARPADEO_S)
     time.sleep(0.15)
     for canal in (CANAL_TL, CANAL_BL, CANAL_TR, CANAL_BR):
         pca.mover_servo(canal, PARPADOS_ABIERTOS[canal])
-        time.sleep(0.01)
+        time.sleep(ESPACIADO_PARPADEO_S)
 
 
 # ==========================================
