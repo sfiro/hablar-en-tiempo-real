@@ -93,10 +93,28 @@ aguanta los 3 subsistemas (ojos + cuello + párpados) moviéndose a la vez.
       deshacer la protección contra picos de corriente que ese espaciado ya daba)
 - [ ] **Pendiente, hardware (el usuario):** quitar el jumper `/OE`→GND, añadir una
       resistencia de pull-up `/OE`→VCC en la placa PCA9685, cablear `/OE` a `GP2`
-- [ ] **Pendiente, confirmar:** que el arreglo elimina el temblor. Riesgo conocido,
-      sin confirmar: si la lógica del PCA9685 corre a 5V, un GPIO de 3.3V de la
-      Pico podría no marcar un HIGH inequívoco en `/OE` — si el temblor persiste
-      igual tras el cambio, revisar esto primero
+- [x] **Confirmado por el usuario:** el arreglo de `/OE` eliminó el temblor al
+      conectar la alimentación. El nivel lógico de 3.3V del GPIO de la Pico basta.
+
+### Hito 4.3: Temblor periódico cada ~5s, tras arreglar el de encendido 🔍 (diagnosticando)
+
+- [x] Dato relevante, mismo patrón que con PAN (Hito 4.1): **v5 es la primera
+      versión que hace parpadear los párpados** después del arranque — v4 nunca
+      volvía a tocar esos canales. Es plausible que el parpadeo esté ejercitando
+      por primera vez una fragilidad eléctrica (pico de corriente al mover 4
+      servos con solo 10ms de separación) que ya existía pero nunca se había
+      puesto a prueba.
+- [x] Añadido `PARPADEO_ACTIVO` en `main.py`: interruptor para desactivar el
+      parpadeo sin tocar el resto del firmware, como prueba diagnóstica limpia —
+      si el temblor de ~5s desaparece con `PARPADEO_ACTIVO = False`, confirma que
+      el parpadeo es el disparador; si persiste igual, hay que buscar en otro lado
+      (no se toca la lógica de rastreo/cuello a la vez, para no mezclar variables)
+- [ ] **Pendiente:** que el usuario pruebe con `PARPADEO_ACTIVO = False` y reporte
+      si el temblor periódico desaparece
+- [ ] Si se confirma: probar aumentar el espaciado entre servos dentro de
+      `parpadear()` (actualmente 10ms, copiado literal del original) para reducir
+      el pico de corriente instantáneo — cambio a probar de uno en uno, después de
+      confirmar la causa, no antes
 
 ---
 

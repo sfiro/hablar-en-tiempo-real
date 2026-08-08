@@ -104,6 +104,10 @@ FACTOR_TILT = 0.6
 
 ALPHA = 0.1  # mismo suavizado que la versión completa, para los 4 ejes con EMA
 
+# Interruptor de diagnóstico: si el temblor periódico persiste con esto en False,
+# el parpadeo queda descartado como causa y hay que seguir buscando en otro lado.
+PARPADEO_ACTIVO = True
+
 EJES = ("LR", "UD", "PAN", "TILT")
 CANAL_DE_EJE = {"LR": CANAL_LR, "UD": CANAL_UD, "PAN": CANAL_PAN, "TILT": CANAL_TILT}
 
@@ -204,7 +208,7 @@ try:
                 posicion_actual[eje] = actual
 
         ahora = time.ticks_ms()
-        if time.ticks_diff(ahora, proximo_parpadeo) > 0:
+        if PARPADEO_ACTIVO and time.ticks_diff(ahora, proximo_parpadeo) > 0:
             parpadear()
             proximo_parpadeo = time.ticks_add(ahora, random.randint(2000, 6000))
 

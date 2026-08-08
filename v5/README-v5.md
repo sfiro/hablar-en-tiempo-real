@@ -85,12 +85,32 @@ su cable de control y reaccionan a ese ruido como si fuera un comando válido.
    servos saltarían todos a la vez al habilitar, justo lo que el espaciado de
    0.1s entre motores quiere evitar.
 
-**Aviso eléctrico, sin confirmar:** esto asume que el pin `VCC` (lógica) de tu
-PCA9685 está a 3.3V, o a un voltaje donde un GPIO de 3.3V de la Pico marque un HIGH
-inequívoco. Si tu placa alimenta la lógica a 5V, el umbral de `VIH` podría quedar
-por encima de lo que un GPIO de 3.3V puede garantizar, y el arreglo no sería fiable.
-Si después de este cambio el temblor de encendido sigue apareciendo igual, ese
-desajuste de nivel lógico es la explicación más probable a revisar.
+**Confirmado por el usuario:** el arreglo eliminó el temblor al conectar la
+alimentación. El GPIO de 3.3V de la Pico marca un HIGH suficientemente claro en
+`/OE` para esta placa.
+
+## Temblor periódico cada ~5 segundos (en diagnóstico)
+
+Tras arreglar el temblor de encendido, apareció otro: todos los servos se mueven
+en todas direcciones cada ~5 segundos, de forma recurrente.
+
+**Dato relevante:** es el mismo patrón que con PAN — **v5 es la primera versión que
+hace parpadear los párpados** después del arranque (v4 nunca volvía a tocar esos
+canales tras centrarlos). Es plausible que el parpadeo esté ejercitando por primera
+vez una fragilidad eléctrica (el pico de corriente de mover 4 servos con solo 10ms
+de separación) que ya existía pero nunca se había puesto a prueba, igual que con
+PAN.
+
+**Prueba diagnóstica añadida:** `PARPADEO_ACTIVO = True` cerca del principio de
+`main.py`. Cámbialo a `False`, vuelve a desplegar, y observa:
+
+- Si el temblor de ~5s **desaparece** → confirma que el parpadeo es el disparador.
+  El siguiente paso sería aumentar el espaciado entre servos dentro de
+  `parpadear()` (ahora 10ms, copiado literal del original) para suavizar el pico
+  de corriente — sin tocar nada más, para no mezclar variables.
+- Si el temblor **persiste igual** → el parpadeo no es la causa, y hay que seguir
+  buscando en otro lado (posiblemente relacionado con el mismo diagnóstico de PAN,
+  si ambos ejes comparten alguna fuente de alimentación o conexión).
 
 ## Qué NO cambia (deliberado)
 
