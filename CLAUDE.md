@@ -1,9 +1,10 @@
 # CLAUDE.md
 
 Guía de todo el proyecto para trabajar en este repositorio. Cada versión (`v1/`, `v2/`,
-`v3/`, `v4/`) tiene su propia documentación detallada; este fichero es el mapa general
-y recoge los hechos que cruzan versiones. Empieza aquí, salta al `CLAUDE-vN.md` o
-`README-vN.md` de la versión concreta cuando necesites el detalle de implementación.
+`v3/`, `v4/`, `v5/`, `v6/`) tiene su propia documentación detallada; este fichero es
+el mapa general y recoge los hechos que cruzan versiones. Empieza aquí, salta al
+`CLAUDE-vN.md` o `README-vN.md` de la versión concreta cuando necesites el detalle
+de implementación.
 
 ## Qué es el proyecto
 
@@ -32,24 +33,32 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
   v4 ("reintroducir complejidad por partes"). **Completa y validada en hardware
   real**, tras abandonar a mitad de la depuración el controlador PCA9685 por PWM
   directo desde la Pico — ver la sección de v5 más abajo.
+- **v6** — trae completa la base funcional de v5 (`main.py`, `face_tracker.py`,
+  `pico_serial.py`, `diagnostico_canal.py`, sin cambios de lógica) y añade
+  `estado_base.py`: un programa independiente de `main.py` que centra los 8
+  servos a 90° y los mantiene ahí — posición segura antes de desconectar la
+  alimentación, o para recuperar un estado neutral tras un error. Código
+  completo con tests, falta validar en hardware real.
 
 **Regla del proyecto, válida para todas las versiones: ninguna versión importa
 código de otra carpeta de versión.** v2 es una copia de v1 con el añadido de
-sentimiento, no un import de v1. v4 y v5 tienen sus propias copias de
+sentimiento, no un import de v1. v4, v5 y v6 tienen sus propias copias de
 `face_tracker.py` y `pico_serial.py` (idénticas entre sí, y con v3), no las importan
 con una ruta relativa cruzada. Esto es deliberado y se pidió explícitamente:
 **cada versión debe poder ejecutarse borrando todas las demás carpetas de
 versión.** Si añades una versión nueva que reutiliza algo de otra, copia el
-fichero, no lo importes.
+fichero, no lo importes. Excepción deliberada: `v5/main_pca9685.py` (la versión
+retirada del firmware) no se copió a v6, porque no es "base funcional" — es
+código explícitamente no usado, y su historial ya vive en `v5/README-v5.md`.
 
-Cada carpeta de versión de Mac (v1/v2/v3, y la parte Mac de v4/v5) tiene su propio
+Cada carpeta de versión de Mac (v1/v2/v3, y la parte Mac de v4/v5/v6) tiene su propio
 `.venv/`, `requirements.txt` y `.env`.
 
-**La única pieza que rompe el patrón de venv es `main.py` en v4/v5:** no tiene
-entorno porque no es Python que corra en el Mac — es firmware MicroPython que se
-copia a la Pico (con Thonny o `mpremote`) y se ejecuta ahí. El resto de v4/v5
-(`face_tracker.py`, `pico_serial.py`, sus tests) sí sigue el patrón normal de venv,
-igual que v1/v2/v3.
+**Las piezas que rompen el patrón de venv son `main.py` (v4/v5/v6) y
+`estado_base.py` (v6):** no tienen entorno porque no son Python que corra en el
+Mac — son firmware MicroPython que se copia a la Pico (con Thonny o `mpremote`) y
+se ejecuta ahí. El resto de v4/v5/v6 (`face_tracker.py`, `pico_serial.py`, sus
+tests) sí sigue el patrón normal de venv, igual que v1/v2/v3.
 
 ## Entorno, por versión
 
@@ -328,6 +337,35 @@ antes de considerar volver a un controlador PWM externo en una versión futura.
   sistema de archivos de la Pico y reiniciarla. Guardarlo explícitamente
   (`Archivo → Guardar como → Raspberry Pi Pico`) + reinicio físico lo resuelve.
 - **No verificado todavía:** sesión larga sin reinicios ni degradación
+
+## v6 — Estado base
+
+[`v6/estado_base.py`](v6/estado_base.py) es lo único nuevo de esta versión: un
+programa **independiente de `main.py`** que lleva los 8 servos a 90° (uno a uno,
+con el mismo espaciado de 0.1s contra picos de corriente que usa `main.py` al
+arrancar) y luego no hace nada más — el PWM de la Pico mantiene la señal sola, sin
+necesidad de un bucle que reenvíe el comando. Pensado para dejar el rig en una
+posición segura antes de desconectar la alimentación, o para recuperar un estado
+neutral tras un error, sin la lógica de rastreo/cuello/parpadeo de por medio.
+
+**El resto de v6 es la base funcional de v5, copiada sin cambios de lógica:**
+`main.py`, `face_tracker.py`, `pico_serial.py`, `diagnostico_canal.py`. Si tocas
+alguno de esos ficheros estando en v6, el arreglo no se propaga solo a v5 —
+replícalo a mano si aplica también ahí. `main_pca9685.py` (la versión retirada con
+PCA9685) **no** se copió a v6 a propósito: no es "base funcional", es código no
+usado, y su historial ya vive en `v5/README-v5.md`.
+
+`estado_base.py` usa la misma fórmula de conversión de grados a PWM y el mismo
+mapeo de pines que `main.py` (`LR=GP2 UD=GP3 TL=GP4 BL=GP5 TR=GP6 BR=GP7 PAN=GP8
+TILT=GP9`) — verificado con un test
+([`v6/tests/test_estado_base.py`](v6/tests/test_estado_base.py)) que compara el
+`duty_u16` de 90° calculado por ambos programas, para que "90°" sea la misma
+posición física en los dos.
+
+**Cómo se verificó:** sintaxis de los 5 ficheros, y 29 tests (25 heredados de v5 +
+4 nuevos para `estado_base.py`) corriendo dentro de `v6/.venv` sin ninguna
+referencia a `v5/`. **No verificado con la Pico física** — no hay una conectada a
+este entorno.
 
 ## Cómo verificar cambios (todas las versiones)
 

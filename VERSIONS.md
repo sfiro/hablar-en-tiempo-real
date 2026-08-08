@@ -180,6 +180,33 @@ Detalle completo: [`v5/PLAN-v5.md`](v5/PLAN-v5.md).
 
 ---
 
+## v6.0.0 🔄 — Estado base (código completo, validación pendiente)
+
+**Objetivo:** un programa dedicado (`estado_base.py`) que lleve los 8 servos a
+90° y los mantenga ahí — posición segura antes de desconectar la alimentación, o
+para recuperar un estado neutral tras un error, sin la lógica de rastreo/cuello/
+parpadeo de por medio.
+
+**Trae toda la base funcional de v5, sin cambios:** `main.py` (rastreo + cuello +
+parpadeo, PWM directo), `face_tracker.py`, `pico_serial.py`,
+`diagnostico_canal.py`. `main_pca9685.py` (la versión retirada) no se copió — no
+es "base funcional".
+
+**Hito 1: Base funcional de v5 traída completa — COMPLETADO**
+- ✅ Copiado todo desde `v5/`, sin cambios de lógica
+- ✅ 25 tests heredados pasan dentro de `v6/.venv`, sin ninguna referencia a `v5/`
+
+**Hito 2: `estado_base.py` — COMPLETADO en código**
+- ✅ Centra los 8 servos con el mismo espaciado de 0.1s que usa `main.py` al
+  arrancar (protección contra picos de corriente)
+- ✅ Misma fórmula de PWM y mismo mapeo de pines que `main.py` — verificado con
+  un test que compara ambos directamente
+- [ ] Validar en la Pico real — no se puede hacer desde este entorno
+
+Detalle completo: [`v6/PLAN-v6.md`](v6/PLAN-v6.md).
+
+---
+
 ## Política de versiones
 
 ### Ramas y tags
@@ -227,6 +254,7 @@ cd v2             # entra en v2
 | v3.0.0  | 🔄 Código completo (Hito 0 y 1), falta cámara/Pico reales | macOS + Raspberry Pi Pico (opcional) |
 | v4.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
 | v5.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
+| v6.0.0  | 🔄 Código completo, falta validar en hardware real | Raspberry Pi Pico (MicroPython) |
 
 ---
 
@@ -242,4 +270,4 @@ Cada versión vive en su carpeta. Si quieres trabajar en v2 mientras otros usan 
 
 ---
 
-**Última actualización:** Agosto 3, 2026
+**Última actualización:** Agosto 8, 2026
