@@ -29,8 +29,9 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
 - **v5** — v4 + cuello (PAN/TILT, siguiendo a los ojos, amortiguado) + parpadeo
   periódico (cada 2-6s, sin depender de si hay rastreo activo). Sigue sin emociones,
   joystick ni modo autónomo — es el siguiente paso del propio plan que se dejó en
-  v4 ("reintroducir complejidad por partes"). Código completo con tests, falta
-  validar en hardware real.
+  v4 ("reintroducir complejidad por partes"). **Completa y validada en hardware
+  real**, tras abandonar a mitad de la depuración el controlador PCA9685 por PWM
+  directo desde la Pico — ver la sección de v5 más abajo.
 
 **Regla del proyecto, válida para todas las versiones: ninguna versión importa
 código de otra carpeta de versión.** v2 es una copia de v1 con el añadido de
@@ -272,38 +273,61 @@ fichero final, a propósito.
 
 ## v5 — + Cuello y parpadeo
 
-[`v5/main.py`](v5/main.py) extiende `v4/main.py` (no `ojosMecanicos/main.py`
-directamente) con dos cosas, siguiendo el pedido explícito del usuario: "rotación de
-la cabeza, el subir y bajar de la cabeza y el parpadeo, mientras hace el rastreo de
-los ojos".
+[`v5/main.py`](v5/main.py) añade, sobre la base de v4, dos cosas pedidas
+explícitamente por el usuario: "rotación de la cabeza, el subir y bajar de la
+cabeza y el parpadeo, mientras hace el rastreo de los ojos".
 
-- **Cuello (PAN/TILT):** se añadieron como dos ejes más al mismo sistema
+- **Cuello (PAN/TILT):** dos ejes más en el mismo sistema
   `objetivo_actual`/`posicion_actual`/EMA que ya usaban LR/UD en v4. El objetivo de
   PAN/TILT se recalcula cada vuelta del bucle a partir del objetivo de LR/UD (no del
   valor ya suavizado), con los factores de amortiguación de `ojosMecanicos/main.py`
   (0.8 horizontal, 0.6 vertical) — copiados literalmente, no reinventados.
 - **Parpadeo:** temporizador aleatorio de 2-6s, independiente de si hay comandos
-  serial llegando (a diferencia del original, donde el parpadeo automático solo
-  ocurre en modo inactivo). Reabre siempre a la posición fija "abierta" de v4, no a
-  un objetivo variable, porque v5 no tiene emociones ni sincronía párpado-mirada
-  todavía.
+  serial llegando. Reabre siempre a la posición fija "abierta", no a un objetivo
+  variable, porque v5 no tiene emociones ni sincronía párpado-mirada todavía.
 
 **v5 es autónoma exactamente igual que v4:** [`v5/face_tracker.py`](v5/face_tracker.py)
-y [`v5/pico_serial.py`](v5/pico_serial.py) son copias de las de v4 (sin ningún
-cambio de lógica, solo referencias de documentación actualizadas), con su propio
-`.venv/` y tests. Si arreglas algo en esos dos ficheros estando en v5, ese arreglo no
-se propaga a v3/v4 — replícalo a mano si aplica.
+y [`v5/pico_serial.py`](v5/pico_serial.py) son copias de las de v4, con su propio
+`.venv/` y tests. Si arreglas algo en esos dos ficheros estando en v5, ese arreglo
+no se propaga a v3/v4 — replícalo a mano si aplica.
 
-**Cómo se verificó, sin la Pico física** (no hay una conectada a este entorno):
-- Lo mismo que v4 (sintaxis, fórmula de pulso, 19 tests heredados)
-- **Nuevo:** [`v5/tests/test_main_math.py`](v5/tests/test_main_math.py) duplica la
-  fórmula de amortiguación del cuello (no se puede importar `main.py` directamente,
-  usa `machine`) y confirma que el cuello siempre se mueve *menos* que los ojos,
-  nunca igual ni más, y que nunca sale de su rango 40-140 ni en los extremos
-- **No verificado, pendiente de hardware real:** que el cuello se vea orgánico de
-  verdad, que el bloqueo de ~230ms de cada parpadeo no se note como un tirón en el
-  rastreo, y que la fuente de alimentación aguante ojos+cuello+párpados a la vez —
-  v4 solo movía 2 servos activamente, v5 mueve hasta 6
+### El PCA9685 se abandonó a mitad de la depuración — no lo reintroduzcas sin releer esto
+
+`v5/main.py` **no usa PCA9685 ni I2C**. Genera el PWM de cada servo directamente
+desde `machine.PWM` en 8 pines de la Pico
+(`LR=GP2 UD=GP3 TL=GP4 BL=GP5 TR=GP6 BR=GP7 PAN=GP8 TILT=GP9`). Esto no fue la
+decisión de diseño de partida: v5 empezó con PCA9685 (igual que v3/v4 y
+`ojosMecanicos`), y ese enfoque sigue existiendo, **archivado y marcado como "no
+usar"**, en [`v5/main_pca9685.py`](v5/main_pca9685.py).
+
+**Por qué se abandonó**, verificado en hardware real, no solo sospechado: con
+PCA9685, v5 daba tres síntomas — temblor aleatorio en todos los servos al conectar
+la alimentación, un temblor periódico (cada ~5s) que resultó estar disparado por
+el propio parpadeo, y el eje PAN sin moverse en absoluto. Se intentaron varios
+arreglos (gating del pin `/OE`, subir el espaciado entre servos del parpadeo de
+10ms a 50ms) — el primero funcionó parcialmente, el segundo **empeoró** el
+problema (de "cada 5s" a "continuo, sin pausas"). Al eliminar el PCA9685 por
+completo, los tres síntomas desaparecieron a la vez, incluido PAN, que nunca se
+había tocado en ese cambio — evidencia de que los tres compartían el mismo origen
+(el chip o la comunicación I2C con él), no la fuente de alimentación ni un bug de
+temporización del firmware. Cronología completa, con cada intento fallido, en
+[`v5/README-v5.md`](v5/README-v5.md#historial-de-depuración-completo) — léela
+antes de considerar volver a un controlador PWM externo en una versión futura.
+
+**Cómo se verificó:**
+- Sin hardware: sintaxis, [`v5/tests/test_main_math.py`](v5/tests/test_main_math.py)
+  (conversión de grados a PWM directo, amortiguación del cuello, y un test cruzado
+  que confirma que la fórmula de PWM directo da la misma posición física que la
+  fórmula de pulso del PCA9685 archivado — diferencia < 5µs en todo el rango)
+- Con la Pico real, por el usuario: "todos los motores se mueven y parpadea sin
+  vibraciones" — confirmado también que PAN funciona, sin que se hubiera tocado
+  nada específico de ese eje en el cambio de arquitectura
+- **Un hallazgo de despliegue, no de código:** `File "<stdin>"` en un
+  `SyntaxError` al cargar el firmware es la firma de que Thonny está pegando el
+  código por el REPL (botón ▶ Run) en vez de guardarlo como `main.py` en el
+  sistema de archivos de la Pico y reiniciarla. Guardarlo explícitamente
+  (`Archivo → Guardar como → Raspberry Pi Pico`) + reinicio físico lo resuelve.
+- **No verificado todavía:** sesión larga sin reinicios ni degradación
 
 ## Cómo verificar cambios (todas las versiones)
 

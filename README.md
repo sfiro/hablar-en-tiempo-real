@@ -6,8 +6,8 @@ análisis de emociones y (en desarrollo) control de un rastreador facial mecáni
 **Estado:** v1 completa y respaldada · v2 completa en código, falta validar con voz
 real · v3 con rastreador facial + enlace serial completos en código, falta validar
 con cámara y hardware real · v4 completa y validada en hardware real (los ojos
-siguen el rostro correctamente) · v5 (+ cuello y parpadeo) código completo, falta
-validar en hardware real.
+siguen el rostro correctamente) · v5 completa y validada en hardware real (+
+cuello y parpadeo, sin vibraciones, tras abandonar el PCA9685 por PWM directo).
 
 ## 📦 Versiones disponibles
 
@@ -103,20 +103,29 @@ python -m pytest tests/ -v        # 19 tests, autónomos, sin tocar v3
 Ver [`v4/README-v4.md`](v4/README-v4.md) para cómo desplegar el firmware
 (Thonny/`mpremote`) y [`v4/PLAN-v4.md`](v4/PLAN-v4.md) para los hitos.
 
-### [v5](v5/) — + Cuello y parpadeo, mientras rastrea 🔄 (código completo, validación pendiente)
-**Estado:** `main.py` de v4 + rotación de cabeza (PAN, amortiguada al 80%) +
-subir/bajar cabeza (TILT, amortiguada al 60%) + parpadeo periódico cada 2-6s, todo
-mientras el rastreo de ojos sigue funcionando igual que en v4. Sin emociones,
-joystick ni modo autónomo todavía.
+### [v5](v5/) — + Cuello y parpadeo, mientras rastrea ✅ (validado en hardware real)
+**Estado:** Completa. Rotación de cabeza (PAN, amortiguada al 80%) + subir/bajar
+cabeza (TILT, amortiguada al 60%) + parpadeo periódico cada 2-6s, todo mientras el
+rastreo de ojos sigue funcionando igual que en v4. Sin emociones, joystick ni modo
+autónomo todavía. **Confirmado por el usuario: "todos los motores se mueven y
+parpadea sin vibraciones".**
+
+**Cambio de arquitectura a mitad de la depuración:** el firmware empezó con el
+mismo controlador PCA9685 (I2C) que usa `ojosMecanicos`, pero en hardware real dio
+tres problemas (temblor al encender, temblor periódico al parpadear, y el eje PAN
+sin moverse) que resultaron tener el mismo origen. Se abandonó el PCA9685 por
+completo, generando el PWM de cada servo directamente desde los pines de la Pico
+— y los tres problemas desaparecieron a la vez. La cronología completa, con cada
+intento y cada error, está documentada en
+[`v5/README-v5.md`](v5/README-v5.md#historial-de-depuración-completo).
 
 **Totalmente autónoma, igual que v4:** copia propia de `face_tracker.py` y
-`pico_serial.py` (sin cambios respecto a v4), `.venv` propio, tests propios (24,
-incluyendo 5 nuevos para la matemática del cuello).
+`pico_serial.py` (sin cambios respecto a v4), `.venv` propio, 25 tests propios.
 
 ```bash
 cd v5 && source .venv/bin/activate
 python face_tracker.py            # rastreo de ojos, sin cambios respecto a v4
-python -m pytest tests/ -v        # 24 tests
+python -m pytest tests/ -v        # 25 tests
 ```
 
 Ver [`v5/README-v5.md`](v5/README-v5.md) y [`v5/PLAN-v5.md`](v5/PLAN-v5.md).
@@ -151,9 +160,9 @@ Ver [`v5/README-v5.md`](v5/README-v5.md) y [`v5/PLAN-v5.md`](v5/PLAN-v5.md).
 | Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 | n/a | n/a |
 | Análisis de emociones | — | ✅ `pysentimiento`, en consola | ✅ (hereda de v2) | — | — |
 | Rastreo facial (ojos) | — | — | 🔄 falta cámara real | ✅ validado en real | ✅ (hereda de v4) |
-| Cuello (PAN/TILT) | — | — | — | — | 🔄 código listo, falta hardware |
-| Parpadeo | — | — | — | — | 🔄 código listo, falta hardware |
-| Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | Validación pendiente |
+| Cuello (PAN/TILT) | — | — | — | — | ✅ validado en real |
+| Parpadeo | — | — | — | — | ✅ validado en real |
+| Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | ✅ Completa y validada |
 
 **Nota sobre independencia:** cada carpeta de versión tiene sus propias copias de
 cualquier código que reutilice de otra (nunca lo importa con una ruta cruzada). Por
@@ -191,11 +200,13 @@ Puedes borrar cualquier carpeta de versión anterior y las demás siguen funcion
 │   ├── README-v4.md
 │   └── PLAN-v4.md
 ├── v5/                     # + Cuello (PAN/TILT) y parpadeo periódico
-│   ├── main.py             # Firmware Pico: v4 + cuello amortiguado + parpadeo
+│   ├── main.py             # Firmware Pico: PWM directo (sin PCA9685), cuello + parpadeo
+│   ├── main_pca9685.py     # Archivado: versión con PCA9685, no usar (ver README-v5.md)
 │   ├── face_tracker.py     # Copia autónoma de v4, sin cambios
 │   ├── pico_serial.py      # Copia autónoma de v4, sin cambios
-│   ├── tests/              # 24 tests: los 19 de v4 + 5 nuevos de la math del cuello
-│   ├── README-v5.md
+│   ├── diagnostico_canal.py # Herramienta: mueve un solo canal, aislado
+│   ├── tests/              # 25 tests
+│   ├── README-v5.md        # Incluye la cronología completa de depuración
 │   └── PLAN-v5.md
 ├── docs/
 │   └── RASPBERRY-PI.md     # Especificación técnica, aparcada

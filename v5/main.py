@@ -1,92 +1,65 @@
 # v5 — Firmware MicroPython para la Raspberry Pi Pico.
 #
-# v4 hacía solo dos cosas (párpados abiertos + rastreo x,y de los ojos). v5 añade,
-# mientras el rastreo de ojos sigue funcionando igual:
-#   1. Rotación de cabeza (PAN, canal 6): imita el giro horizontal de los ojos,
-#      amortiguado al 80% (mismo factor que ojosMecanicos/main.py).
-#   2. Subir/bajar cabeza (TILT, canal 7): imita la inclinación vertical de los ojos,
-#      amortiguado al 60%.
-#   3. Parpadeo periódico (canales TL/BL/TR/BR): cada 2-6 segundos, sin depender de
-#      si hay rastreo activo o no — parpadea igual mientras los ojos siguen la cara.
+# Ojos abiertos + rastreo x,y + cuello (PAN/TILT amortiguado) + parpadeo periódico,
+# generando el PWM de cada servo directamente desde los pines de la propia Pico
+# (machine.PWM), SIN pasar por un controlador PCA9685 ni por I2C.
 #
-# Deliberadamente NO incluye todavía (respecto al main.py "de producción" de
-# ojosMecanicos): joystick, modo autónomo, emociones y su sincronía con la mirada.
-# Ver ../v5/README-v5.md para el porqué y qué falta.
+# Por qué no hay PCA9685: la primera versión de este firmware sí lo usaba (sigue
+# disponible en main_pca9685.py, como referencia histórica) y daba dos problemas
+# en hardware real: temblor aleatorio en todos los servos (que empeoraba, no
+# mejoraba, al ajustar la temporización del parpadeo) y el eje PAN sin moverse en
+# absoluto. Al quitar el PCA9685 y generar el PWM directo desde la Pico, ambos
+# problemas desaparecieron a la vez — confirmado en hardware real por el usuario:
+# "todos los motores se mueven y parpadea sin vibraciones". Esto señala al chip
+# PCA9685 o a la comunicación I2C con él como la causa de fondo, no a la fuente de
+# alimentación ni a un bug de temporización en este firmware.
 #
-# Acepta "LR,UD\n" o "LR,UD,EMOCION\n" (formato de v3/v4) ignorando el tercer campo:
-# el Mac (pico_serial.py, copia propia de v5) no necesita ningún cambio.
+# Mapeo de pines (cada par comparte "slice" de PWM en el RP2040, pero como los 8
+# servos usan la misma frecuencia de 50Hz, comparten slice sin ningún conflicto):
+#   LR=GP2  UD=GP3  TL=GP4  BL=GP5  TR=GP6  BR=GP7  PAN=GP8  TILT=GP9
 #
-# --- Arranque limpio con /OE (Output Enable) del PCA9685 ---------------------
-# Al conectar la alimentación, todos los servos se movían solos y en direcciones
-# aleatorias durante 1-2s, hasta que este firmware terminaba de arrancar y tomaba
-# el control. Pasaba con cualquier firmware, incluso antes de ejecutar código: las
-# salidas PWM del PCA9685 quedan en un estado indefinido en el instante entre
-# "llega la alimentación" y "la Pico termina de arrancar y configura el chip", y
-# los servos reaccionan a esa señal indefinida como si fuera un comando válido.
-# La solución: cablear el pin /OE (activo en bajo) del PCA9685 a GP2, con una
-# resistencia de pull-up externa hacia VCC en la propia placa PCA9685 (antes
-# estaba puesto directo a GND, lo que dejaba las salidas siempre habilitadas).
-# El pull-up garantiza que /OE esté en HIGH (deshabilitado) por defecto incluso
-# antes de que la Pico arranque; el firmware lo confirma explícitamente al
-# principio y solo lo baja (habilita) cuando todos los servos ya están en su
-# posición inicial correcta — así nunca llega una señal indefinida a los motores.
+# Acepta "LR,UD\n" o "LR,UD,EMOCION\n" (formato de v3/v4) ignorando el tercer
+# campo: el Mac (pico_serial.py, copia propia de v5) no necesita ningún cambio.
 
 import machine
-import math
 import random
 import select
 import sys
 import time
 
-# Deshabilita las salidas del PCA9685 ya mismo, lo primero que hace el firmware,
-# antes incluso de tocar el I2C. El pull-up externo en la placa PCA9685 ya lo
-# mantiene en HIGH desde antes de esto; esta línea lo hace explícito en el código
-# y no depende de que el pull-up sea perfecto.
-PIN_OE = machine.Pin(2, machine.Pin.OUT)
-PIN_OE.value(1)  # 1 = deshabilitado (OE es activo en bajo)
+# --- Conversión de grados a PWM ----------------------------------------------
+# Mismo rango de pulso que el PCA9685 (102-512 en registros de 12 bits a 50Hz
+# equivale a ~498-2500 microsegundos): mismos grados, misma posición física.
+PULSO_MIN_US, PULSO_MAX_US = 500, 2500
+FREQ_SERVO = 50
+PERIODO_US = 1_000_000 / FREQ_SERVO  # 20000us a 50Hz
 
 
-class ControladorPCA9685:
-    """Igual que en el main.py de ojosMecanicos: control del PCA9685 por I2C."""
-
-    def __init__(self, i2c, address=0x40, freq=50):
-        self.i2c = i2c
-        self.address = address
-        self.i2c.writeto_mem(self.address, 0x00, b"\x10")
-        prescale = int(math.floor(25000000.0 / 4096 / freq - 0.5))
-        self.i2c.writeto_mem(self.address, 0xFE, bytes([prescale]))
-        self.i2c.writeto_mem(self.address, 0x00, b"\x00")
-        time.sleep(0.005)
-        self.i2c.writeto_mem(self.address, 0x00, b"\xA1")
-
-    def mover_servo(self, canal, grados):
-        pulso = int(102 + (grados / 180.0) * (512 - 102))
-        registro = 0x06 + 4 * canal
-        try:
-            self.i2c.writeto_mem(self.address, registro, bytes([0, 0, pulso & 0xFF, pulso >> 8]))
-        except OSError:
-            # Bus I2C ocupado o con ruido eléctrico de los motores: se ignora, el
-            # siguiente ciclo del bucle vuelve a intentar la escritura.
-            pass
+def grados_a_duty_u16(grados):
+    us = PULSO_MIN_US + (grados / 180.0) * (PULSO_MAX_US - PULSO_MIN_US)
+    return int((us / PERIODO_US) * 65535)
 
 
-# ==========================================
-# CONFIGURACIÓN DE HARDWARE (igual que ojosMecanicos/main.py)
-# ==========================================
-i2c = machine.I2C(0, sda=machine.Pin(0), scl=machine.Pin(1), freq=400000)
-pca = ControladorPCA9685(i2c)
+CANAL_LR, CANAL_UD = "LR", "UD"
+CANAL_TL, CANAL_BL, CANAL_TR, CANAL_BR = "TL", "BL", "TR", "BR"
+CANAL_PAN, CANAL_TILT = "PAN", "TILT"
 
-# Habilitamos las salidas AQUÍ, justo tras configurar el chip y antes de mover
-# ningún servo: en este punto los registros de posición de cada canal siguen en
-# su estado de reposo de fábrica (sin señal), así que habilitar ahora no mueve
-# nada todavía. Si se habilitara más tarde, después de programar ya todas las
-# posiciones, los 8 servos saltarían TODOS A LA VEZ al habilitar — justo lo que
-# el espaciado de 0.1s entre motores del bucle de abajo quiere evitar.
-PIN_OE.value(0)
+PIN_DE_CANAL = {
+    CANAL_LR: 2, CANAL_UD: 3,
+    CANAL_TL: 4, CANAL_BL: 5, CANAL_TR: 6, CANAL_BR: 7,
+    CANAL_PAN: 8, CANAL_TILT: 9,
+}
 
-CANAL_LR, CANAL_UD = 0, 1
-CANAL_TL, CANAL_BL, CANAL_TR, CANAL_BR = 2, 3, 4, 5
-CANAL_PAN, CANAL_TILT = 6, 7
+pwm_de_canal = {}
+for _canal, _pin in PIN_DE_CANAL.items():
+    _pwm = machine.PWM(machine.Pin(_pin))
+    _pwm.freq(FREQ_SERVO)
+    pwm_de_canal[_canal] = _pwm
+
+
+def mover_servo(canal, grados):
+    pwm_de_canal[canal].duty_u16(grados_a_duty_u16(grados))
+
 
 # (cerrado, abierto) para los párpados — mismos valores que model.md/main.py.
 PARPADOS_ABIERTOS = {CANAL_TL: 170, CANAL_BL: 10, CANAL_TR: 10, CANAL_BR: 160}
@@ -97,30 +70,18 @@ UD_MIN, UD_MAX = 40, 140
 PAN_MIN, PAN_MAX = 40, 140
 TILT_MIN, TILT_MAX = 40, 140
 
-# Cuánto del movimiento de los ojos se traslada al cuello (mismos factores que
-# ojosMecanicos/main.py: la cabeza acompaña la mirada, no la iguala 1 a 1).
 FACTOR_PAN = 0.8
 FACTOR_TILT = 0.6
 
-ALPHA = 0.1  # mismo suavizado que la versión completa, para los 4 ejes con EMA
+ALPHA = 0.1
 
-# Interruptor de diagnóstico: si el temblor periódico persiste con esto en False,
-# el parpadeo queda descartado como causa y hay que seguir buscando en otro lado.
-# Confirmado en hardware real: con esto en False no tiembla; con True, sí — el
-# parpadeo es el disparador. Ver ESPACIADO_PARPADEO_S para el siguiente ajuste.
-PARPADEO_ACTIVO = True
+PARPADEO_ACTIVO = True    # False lo desactiva por completo, para pruebas
+ESPACIADO_PARPADEO_S = 0.05  # separación entre cada servo de párpado al parpadear
 
-# Separación entre el movimiento de cada servo de párpado durante el parpadeo.
-# Empezó en 10ms (igual que ojosMecanicos/main.py) y causaba que los picos de
-# corriente de los 4 servos se solaparan lo suficiente para temblar visiblemente.
-# Subido a 50ms como primer intento; si sigue temblando, sube este valor más.
-ESPACIADO_PARPADEO_S = 0.05
+EJES = (CANAL_LR, CANAL_UD, CANAL_PAN, CANAL_TILT)
 
-EJES = ("LR", "UD", "PAN", "TILT")
-CANAL_DE_EJE = {"LR": CANAL_LR, "UD": CANAL_UD, "PAN": CANAL_PAN, "TILT": CANAL_TILT}
-
-posicion_actual = {"LR": 90.0, "UD": 90.0, "PAN": 90.0, "TILT": 90.0}
-objetivo_actual = {"LR": 90.0, "UD": 90.0, "PAN": 90.0, "TILT": 90.0}
+posicion_actual = {CANAL_LR: 90.0, CANAL_UD: 90.0, CANAL_PAN: 90.0, CANAL_TILT: 90.0}
+objetivo_actual = {CANAL_LR: 90.0, CANAL_UD: 90.0, CANAL_PAN: 90.0, CANAL_TILT: 90.0}
 
 
 def clamp(valor, minimo, maximo):
@@ -133,33 +94,31 @@ def clamp(valor, minimo, maximo):
 print("v5: iniciando (rastreo de ojos + cuello + parpadeo periódico)...")
 
 for canal, grados in PARPADOS_ABIERTOS.items():
-    pca.mover_servo(canal, grados)
-    time.sleep(0.1)  # pausa entre motor y motor, para no pedir toda la corriente de golpe
+    mover_servo(canal, grados)
+    time.sleep(0.1)
 
 for eje in EJES:
-    pca.mover_servo(CANAL_DE_EJE[eje], 90)
+    mover_servo(eje, 90)
     time.sleep(0.1)
 
 print("Ojos y cuello centrados, párpados abiertos. Esperando \"LR,UD\" por serial.")
 
 # ==========================================
-# LECTURA DESDE USB SERIAL (sys.stdin, no UART físico — igual que ojosMecanicos)
+# LECTURA DESDE USB SERIAL
 # ==========================================
 lector_serial = select.poll()
 lector_serial.register(sys.stdin, select.POLLIN)
 
 
 def procesar_comando(linea):
-    """Formato esperado: "LR,UD" o "LR,UD,EMOCION" (el tercer campo se ignora aquí:
-    ver la cabecera del fichero — esta versión no tiene sistema de emociones)."""
     try:
         partes = linea.strip().split(",")
         if len(partes) < 2:
             return False
         lr = clamp(int(partes[0]), LR_MIN, LR_MAX)
         ud = clamp(int(partes[1]), UD_MIN, UD_MAX)
-        objetivo_actual["LR"] = float(lr)
-        objetivo_actual["UD"] = float(ud)
+        objetivo_actual[CANAL_LR] = float(lr)
+        objetivo_actual[CANAL_UD] = float(ud)
         print("Serial: LR={}, UD={}".format(lr, ud))
         return True
     except (ValueError, IndexError):
@@ -167,41 +126,26 @@ def procesar_comando(linea):
 
 
 def actualizar_objetivo_cuello():
-    """El cuello sigue a los ojos, amortiguado — se recalcula en cada vuelta del
-    bucle a partir del objetivo de LR/UD, igual que sincronizar_parpados_y_cuello()
-    en ojosMecanicos/main.py (ahí sin la parte de párpados, que en v5 no depende
-    de la mirada, solo del parpadeo periódico)."""
-    objetivo_pan = 90 + (objetivo_actual["LR"] - 90) * FACTOR_PAN
-    objetivo_tilt = 90 + (objetivo_actual["UD"] - 90) * FACTOR_TILT
-    objetivo_actual["PAN"] = clamp(objetivo_pan, PAN_MIN, PAN_MAX)
-    objetivo_actual["TILT"] = clamp(objetivo_tilt, TILT_MIN, TILT_MAX)
+    objetivo_pan = 90 + (objetivo_actual[CANAL_LR] - 90) * FACTOR_PAN
+    objetivo_tilt = 90 + (objetivo_actual[CANAL_UD] - 90) * FACTOR_TILT
+    objetivo_actual[CANAL_PAN] = clamp(objetivo_pan, PAN_MIN, PAN_MAX)
+    objetivo_actual[CANAL_TILT] = clamp(objetivo_tilt, TILT_MIN, TILT_MAX)
 
 
 def parpadear():
-    """Cierra los 4 párpados de forma escalonada, espera, y los vuelve a abrir.
-    Bloquea el bucle principal mientras dura — igual que en ojosMecanicos/main.py.
-
-    Confirmado en hardware real: con 10ms de separación (el valor original) los 4
-    servos coinciden dentro de la ventana de pico de corriente de cada uno, y esa
-    suma causaba un temblor visible en todos los servos cada vez que parpadeaba.
-    Subido a 50ms: menos servos acelerando a la vez, para que sus picos de
-    corriente se solapen menos. Si sigue temblando, sube ESPACIADO_PARPADEO_S más;
-    si se ve demasiado lento/robótico, se puede bajar con cuidado."""
     for canal in (CANAL_TL, CANAL_BL, CANAL_TR, CANAL_BR):
-        pca.mover_servo(canal, PARPADOS_CERRADOS[canal])
+        mover_servo(canal, PARPADOS_CERRADOS[canal])
         time.sleep(ESPACIADO_PARPADEO_S)
     time.sleep(0.15)
     for canal in (CANAL_TL, CANAL_BL, CANAL_TR, CANAL_BR):
-        pca.mover_servo(canal, PARPADOS_ABIERTOS[canal])
+        mover_servo(canal, PARPADOS_ABIERTOS[canal])
         time.sleep(ESPACIADO_PARPADEO_S)
 
 
 # ==========================================
 # BUCLE PRINCIPAL
 # ==========================================
-ultimo_parpadeo_en = time.ticks_ms()
-proximo_parpadeo = time.ticks_add(ultimo_parpadeo_en, random.randint(2000, 6000))
-vueltas_de_bucle = 0
+proximo_parpadeo = time.ticks_add(time.ticks_ms(), random.randint(2000, 6000))
 
 try:
     while True:
@@ -211,7 +155,7 @@ try:
                 if linea:
                     procesar_comando(linea)
             except Exception:
-                pass  # basura en el serial no debe tumbar el firmware
+                pass
 
         actualizar_objetivo_cuello()
 
@@ -220,29 +164,17 @@ try:
             actual = posicion_actual[eje]
             if abs(objetivo - actual) > 0.5:
                 actual = (objetivo * ALPHA) + (actual * (1 - ALPHA))
-                pca.mover_servo(CANAL_DE_EJE[eje], int(actual))
+                mover_servo(eje, int(actual))
                 posicion_actual[eje] = actual
 
         ahora = time.ticks_ms()
         if PARPADEO_ACTIVO and time.ticks_diff(ahora, proximo_parpadeo) > 0:
-            # Diagnóstico: cuánto pasó desde el parpadeo anterior y cuántas
-            # vueltas de bucle dio en medio. Si esto imprime segundos normales
-            # (2-6s) y muchas vueltas, el disparador está bien y el temblor
-            # "continuo" no son parpadeos repetidos — hay que buscar en otro
-            # lado. Si imprime ~0s y ~0 vueltas una y otra vez, el disparador
-            # está roto y SÍ está parpadeando sin parar.
-            transcurrido = time.ticks_diff(ahora, ultimo_parpadeo_en)
-            print("[parpadeo] han pasado", transcurrido, "ms,", vueltas_de_bucle, "vueltas de bucle desde el anterior")
             parpadear()
-            ultimo_parpadeo_en = ahora
-            vueltas_de_bucle = 0
             proximo_parpadeo = time.ticks_add(ahora, random.randint(2000, 6000))
-        else:
-            vueltas_de_bucle += 1
 
         time.sleep(0.01)
 
 except KeyboardInterrupt:
     print("\nDeteniendo... centrando ojos y cuello.")
     for eje in EJES:
-        pca.mover_servo(CANAL_DE_EJE[eje], 90)
+        mover_servo(eje, 90)

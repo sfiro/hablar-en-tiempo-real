@@ -143,32 +143,38 @@ Detalle completo: [`v4/PLAN-v4.md`](v4/PLAN-v4.md).
 
 ---
 
-## v5.0.0 🔄 — + Cuello y parpadeo (código completo, validación pendiente)
+## v5.0.0 ✅ — + Cuello y parpadeo (completa y validada en hardware real)
 
 **Objetivo:** siguiendo el Hito 3 de v4, reintroducir parpadeo y movimiento de
 cuello (sin emociones todavía) mientras el rastreo de ojos sigue funcionando igual.
 
 **Autónoma, igual que v4:** copia propia de `face_tracker.py` y `pico_serial.py`
-(sin cambios respecto a v4), `.venv` propio, 24 tests propios (19 heredados +
-5 nuevos para la matemática del cuello).
+(sin cambios respecto a v4), `.venv` propio, 25 tests propios.
 
-**Hito 1: Autonomía completa (COMPLETADO)**
+**Cambio de arquitectura no anticipado:** el firmware empezó usando el mismo
+controlador PCA9685 (I2C) de `ojosMecanicos`, pero en hardware real dio tres
+problemas — temblor de servos al encender, temblor periódico al parpadear, y el
+eje PAN sin moverse — que, tras una depuración larga (arreglo de `/OE`, ajustes de
+temporización, instrumentación de diagnóstico), resultaron tener el mismo origen:
+el PCA9685 o la comunicación I2C con él. Se abandonó el PCA9685 por completo,
+generando el PWM directamente desde los pines de la Pico, y los tres problemas
+desaparecieron a la vez. Cronología completa, con cada intento y cada error, en
+[`v5/README-v5.md`](v5/README-v5.md#historial-de-depuración-completo).
+
+**Hito 1: Autonomía completa — COMPLETADO**
 - ✅ Copiado todo lo del lado Mac desde `v4/`, sin cambios de lógica
 
-**Hito 2: Cuello — PAN/TILT (COMPLETADO en código)**
+**Hito 2: Cuello — PAN/TILT — COMPLETADO**
 - ✅ El cuello sigue a los ojos, amortiguado (80% horizontal, 60% vertical — mismos
   factores que `ojosMecanicos/main.py`), con el mismo suavizado EMA que los ojos
-- ✅ Verificado sin hardware: el cuello siempre se mueve menos que los ojos, nunca
-  sale de su rango 40-140
 
-**Hito 3: Parpadeo periódico (COMPLETADO en código)**
-- ✅ Cada 2-6 segundos, independiente de si hay rastreo activo — bloquea el bucle
-  ~230ms mientras dura, igual que en el original
+**Hito 3: Parpadeo periódico — COMPLETADO**
+- ✅ Cada 2-6 segundos, independiente de si hay rastreo activo
 
-**Hito 4: Validación con hardware (SIGUIENTE, necesita al usuario)**
-- [ ] Confirmar que el cuello se ve orgánico siguiendo los ojos
-- [ ] Confirmar que el parpadeo no causa tirones perceptibles en el rastreo
-- [ ] Confirmar que la fuente de alimentación aguanta ojos+cuello+párpados a la vez
+**Hito 4: Validación con hardware — COMPLETADO**
+- ✅ Confirmado por el usuario: "todos los motores se mueven y parpadea sin
+  vibraciones", incluyendo PAN, que nunca se había movido con el PCA9685
+- [ ] Sesión larga sin problemas — no verificado, no bloqueante
 
 Detalle completo: [`v5/PLAN-v5.md`](v5/PLAN-v5.md).
 
@@ -220,7 +226,7 @@ cd v2             # entra en v2
 | v2.0.0  | 🔄 Código completo, falta validar con voz real | macOS |
 | v3.0.0  | 🔄 Código completo (Hito 0 y 1), falta cámara/Pico reales | macOS + Raspberry Pi Pico (opcional) |
 | v4.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
-| v5.0.0  | 🔄 Código completo, falta validar en hardware real | Raspberry Pi Pico (MicroPython) |
+| v5.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
 
 ---
 

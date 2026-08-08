@@ -47,19 +47,30 @@ aguanta los 3 subsistemas (ojos + cuello + párpados) moviéndose a la vez.
 
 ---
 
-## Hito 4: Validación con hardware real 🔄 (en curso, dos hallazgos abiertos)
+## Hito 4: Validación con hardware real ✅ (resuelto — cambio de arquitectura)
 
 - [x] Desplegado `v5/main.py` en la Pico
 - [x] Rastreo de ojos y movimiento arriba/abajo (TILT) confirmados funcionando
-- [ ] **PAN (rotación izquierda/derecha) no se mueve** — ver Hito 4.1
-- [ ] **Temblor aleatorio al conectar la alimentación** — ver Hito 4.2
-- [ ] Confirmar visualmente que el cuello acompaña el movimiento de los ojos, de
-      forma visiblemente más suave/amortiguada (pendiente de resolver 4.1 primero)
-- [ ] Confirmar que no hay tirones perceptibles en el rastreo durante un parpadeo
-- [ ] Sesión larga (varios minutos): sin reinicios inesperados, sin que la fuente
-      de alimentación se sature con los ejes nuevos en movimiento
+- [x] **PAN (rotación izquierda/derecha)** — no se movía con PCA9685 (Hito 4.1);
+      **resuelto** al pasar a PWM directo (Hito 4.4/4.5) — ahora funciona
+- [x] **Temblor aleatorio al conectar la alimentación** — arreglado primero con
+      `/OE` (Hito 4.2) sobre PCA9685; el cambio a PWM directo (Hito 4.5) lo
+      resuelve de raíz sin necesitar ese arreglo
+- [x] **Temblor periódico/continuo del parpadeo** — Hitos 4.3, resuelto también
+      por el cambio de arquitectura (Hito 4.5)
+- [x] Confirmado por el usuario, con PWM directo: "todos los motores se mueven y
+      parpadea sin vibraciones"
+- [ ] Sesión larga (varios minutos): sin reinicios inesperados — no probado
+      todavía de forma prolongada
 
-### Hito 4.1: PAN no se mueve 🔍 (diagnosticando)
+**Resumen de la causa raíz:** los tres síntomas (PAN sin moverse, temblor de
+encendido, temblor de parpadeo) apuntaban al mismo origen — el chip PCA9685 o la
+comunicación I2C con él —, no a la fuente de alimentación ni a un bug de
+temporización en el firmware. Ver [`README-v5.md`](README-v5.md), sección
+"Historial de depuración completo", para la cronología detallada de cómo se llegó
+a esta conclusión, incluyendo los intentos que no funcionaron.
+
+### Hito 4.1: PAN no se mueve ✅ (resuelto, ver Hito 4.5)
 
 - [x] Revisado `main.py` línea por línea comparando PAN contra TILT: la lógica es
       idéntica en estructura (mismo diccionario de ejes, mismo suavizado EMA, misma
@@ -72,11 +83,13 @@ aguanta los 3 subsistemas (ojos + cuello + párpados) moviéndose a la vez.
 - [x] Creado [`diagnostico_canal.py`](diagnostico_canal.py): mueve un solo canal
       del PCA9685 (por defecto, el 6/PAN) en barrido lento, sin nada de la lógica
       de rastreo ni serial de por medio — para aislar si es hardware o firmware
-- [ ] **Pendiente:** correr el diagnóstico y comparar canal 6 vs canal 7 (control),
-      y reportar qué se observa exactamente (silencio total, vibra sin girar, gira
-      poco, o gira bien aislado pero no durante el rastreo normal)
+- [x] **Resuelto sin necesitar `diagnostico_canal.py`:** al pasar a PWM directo
+      (Hito 4.5), PAN empezó a funcionar sin ningún cambio específico a ese eje —
+      confirma que la causa estaba en el PCA9685/I2C, no en el cableado mecánico
+      del servo. `diagnostico_canal.py` queda como herramienta disponible para
+      futuros problemas de un solo canal, pero no hizo falta usarlo aquí.
 
-### Hito 4.2: Temblor aleatorio al conectar la alimentación 🔧 (arreglo propuesto, sin confirmar)
+### Hito 4.2: Temblor aleatorio al conectar la alimentación ✅ (arreglado, luego superado)
 
 - [x] Diagnosticado: ocurre con cualquier firmware, incluso antes de que se
       ejecute código — descarta un bug de software. Se calma en 1-2s, coincidiendo
@@ -91,12 +104,14 @@ aguanta los 3 subsistemas (ojos + cuello + párpados) moviéndose a la vez.
       explícitamente al inicio del código, habilitado justo después de inicializar
       el chip PCA9685 y **antes** de los bucles de centrado escalonado (para no
       deshacer la protección contra picos de corriente que ese espaciado ya daba)
-- [ ] **Pendiente, hardware (el usuario):** quitar el jumper `/OE`→GND, añadir una
-      resistencia de pull-up `/OE`→VCC en la placa PCA9685, cablear `/OE` a `GP2`
 - [x] **Confirmado por el usuario:** el arreglo de `/OE` eliminó el temblor al
       conectar la alimentación. El nivel lógico de 3.3V del GPIO de la Pico basta.
+- [x] **Nota final:** este arreglo era específico del PCA9685 y ya no aplica en la
+      arquitectura final (Hito 4.5, PWM directo) — se conserva documentado en
+      `main_pca9685.py` y en el historial de README-v5.md por si se necesita en el
+      futuro, pero no forma parte del firmware activo.
 
-### Hito 4.3: Temblor periódico cada ~5s, tras arreglar el de encendido 🔍 (diagnosticando)
+### Hito 4.3: Temblor periódico cada ~5s, tras arreglar el de encendido ✅ (causa confirmada, resuelto en Hito 4.5)
 
 - [x] Dato relevante, mismo patrón que con PAN (Hito 4.1): **v5 es la primera
       versión que hace parpadear los párpados** después del arranque — v4 nunca
@@ -139,10 +154,13 @@ aguanta los 3 subsistemas (ojos + cuello + párpados) moviéndose a la vez.
         brownout: la fuente no aguanta ni la secuencia de arranque), y lo que se
         ve como "temblor continuo" sería en realidad la secuencia de apertura de
         párpados + centrado repitiéndose una y otra vez, no el parpadeo
-- [ ] **Pendiente:** que el usuario corra esto con el monitor serial de Thonny
-      abierto y reporte literalmente qué se imprime
+- [x] **Superado, no llegó a usarse:** antes de que el usuario reportara los datos
+      de estos prints, se decidió probar la vía del Hito 4.5 (PWM directo), que
+      resolvió el problema de raíz. Los prints se retiraron de `main.py` en la
+      limpieza final (siguen disponibles en `main_pca9685.py` si hiciera falta
+      retomar esa vía).
 
-### Hito 4.4: Alternativa sin PCA9685 — PWM directo desde la Pico 🔬 (propuesta por el usuario)
+### Hito 4.4: Alternativa sin PCA9685 — PWM directo desde la Pico ✅ (implementada)
 
 - [x] Creado [`main_pwm_directo.py`](main_pwm_directo.py): misma funcionalidad
       (ojos+cuello+parpadeo, mismo protocolo serial), generando el PWM de cada
@@ -160,29 +178,51 @@ aguanta los 3 subsistemas (ojos + cuello + párpados) moviéndose a la vez.
       Pico también flotan hasta que el código los configura, así que el temblor de
       arranque original podría reaparecer aquí sin resistencias de pull-down (8
       en vez de la 1 que bastaba con `/OE`)
-- [ ] **Pendiente:** que el usuario pruebe esta versión en la Pico y compare
-      contra la versión con PCA9685 (`main.py`)
+- [x] **Probado por el usuario y funciona** — ver Hito 4.5
+
+### Hito 4.5: Despliegue y confirmación final ✅ (resuelto)
+
+- [x] Dos intentos fallidos de cargar `main_pwm_directo.py`, ambos
+      `SyntaxError: invalid syntax` con `File "<stdin>"` — diagnosticado como
+      Thonny pegando el código por el REPL (botón ▶ Run) en vez de guardarlo en
+      el sistema de archivos de la Pico. Se eliminaron también, por si acaso,
+      todas las f-strings partidas en varias líneas del fichero (y de
+      `main.py`, por consistencia)
+- [x] Con el despliegue correcto (`Guardar como → Raspberry Pi Pico` + reinicio
+      físico, no el botón ▶ Run): **funciona por completo**
+- [x] **Confirmado por el usuario:** "todos los motores se mueven y parpadea sin
+      vibraciones" — Y además, sin ningún cambio específico a ese eje, **PAN
+      también funciona ahora**
+- [x] Conclusión: los tres síntomas (PAN, temblor de encendido, temblor de
+      parpadeo) tenían el mismo origen — el PCA9685/I2C
+- [x] Reorganización de archivos: `main_pwm_directo.py` → `main.py` (oficial),
+      `main.py` original → `main_pca9685.py` (archivado, con nota de "no usar"),
+      limpiados los prints de diagnóstico ya innecesarios, `test_main_math.py`
+      actualizado a la fórmula de PWM directo (con un test cruzado que confirma
+      que ambas fórmulas de pulso dan la misma posición física)
 
 ---
 
 ## Definición de listo
 
-v5.0.0 está lista cuando:
+v5.0.0 está lista — **completada**:
 
 1. [x] Autonomía completa (no depende de v1/v2/v3/v4)
 2. [x] Cuello y parpadeo implementados, con la matemática nueva verificada sin
    hardware
 3. [x] Compatibilidad de protocolo con versiones anteriores mantenida
 4. [x] Rastreo de ojos y TILT confirmados funcionando en hardware real
-5. [ ] **PAN funcionando** (Hito 4.1, diagnóstico en curso)
-6. [ ] **Temblor de encendido eliminado** (Hito 4.2, arreglo propuesto sin confirmar)
-7. [ ] Validación completa: cuello, parpadeo, y ausencia de tirones en el rastreo,
-   todo junto y funcionando, sesión larga sin problemas
+5. [x] PAN funcionando (resuelto con el cambio a PWM directo)
+6. [x] Temblor de encendido y de parpadeo eliminados (mismo cambio de arquitectura)
+7. [x] Validación funcional completa, confirmada por el usuario: "todos los
+   motores se mueven y parpadea sin vibraciones"
+8. [ ] Sesión larga sin problemas — no verificado todavía, no bloqueante
 
 ---
 
-**Última actualización:** Agosto 7, 2026
-**Estado actual:** Código completo (Hitos 1-3). En validación con hardware real
-(Hito 4): rastreo de ojos y TILT confirmados, dos hallazgos abiertos — PAN no se
-mueve (diagnosticando, hipótesis hardware) y temblor aleatorio al encender
-(diagnosticado, arreglo con `/OE` implementado, pendiente de confirmar).
+**Última actualización:** Agosto 8, 2026
+**Estado actual:** v5.0.0 completa y validada en hardware real. Requirió abandonar
+el controlador PCA9685 a mitad de la depuración, en favor de PWM directo desde la
+Pico — cambio de arquitectura no anticipado al empezar la versión, documentado con
+su cronología completa (incluyendo los intentos que no funcionaron) en
+[`README-v5.md`](README-v5.md).

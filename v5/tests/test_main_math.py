@@ -1,7 +1,7 @@
 """
-Verificación de la matemática pura de main.py (firmware de la Pico): fórmula de
-pulso PCA9685, amortiguación del cuello (PAN/TILT siguiendo a LR/UD), y los valores
-de párpados abiertos/cerrados.
+Verificación de la matemática pura de main.py (firmware de la Pico): conversión de
+grados a PWM (directo desde la Pico, sin PCA9685), amortiguación del cuello
+(PAN/TILT siguiendo a LR/UD), y los valores de párpados abiertos/cerrados.
 
 No se puede importar main.py directamente: usa `machine`, que no existe fuera de
 MicroPython real. Por eso las fórmulas se duplican aquí, literalmente copiadas del
@@ -10,8 +10,13 @@ main.py, actualiza también la copia de aquí — son deliberadamente independie
 no hay una sola fuente de verdad automática entre firmware y test (limitación
 aceptada, no un descuido).
 
-Esto verifica que la matemática es internamente consistente; NO verifica que el
-PCA9685 real se mueva como se espera — eso solo lo confirma la Pico física.
+Esto verifica que la matemática es internamente consistente; NO verifica que los
+servos reales se muevan como se espera — eso solo lo confirma la Pico física.
+
+Nota histórica: hasta que se abandonó el PCA9685 (ver README-v5.md, "Historial de
+depuración"), este test verificaba su fórmula de pulso (registros 102-512 a 50Hz).
+Esa fórmula sigue en `main_pca9685.py` (archivado, no usado); aquí se testea la
+fórmula real de `main.py`, en microsegundos/duty_u16 sobre PWM directo de la Pico.
 
 Ejecutar:
     python -m pytest tests/test_main_math.py -v
@@ -19,10 +24,16 @@ Ejecutar:
 
 import pytest
 
-# --- Copiado de main.py: fórmula de pulso PCA9685 ---------------------------
+# --- Copiado de main.py: conversión de grados a PWM directo (sin PCA9685) ----
 
-def pulso_para(grados):
-    return int(102 + (grados / 180.0) * (512 - 102))
+PULSO_MIN_US, PULSO_MAX_US = 500, 2500
+FREQ_SERVO = 50
+PERIODO_US = 1_000_000 / FREQ_SERVO
+
+
+def grados_a_duty_u16(grados):
+    us = PULSO_MIN_US + (grados / 180.0) * (PULSO_MAX_US - PULSO_MIN_US)
+    return int((us / PERIODO_US) * 65535)
 
 
 # --- Copiado de main.py: amortiguación del cuello ----------------------------
@@ -51,10 +62,27 @@ PARPADOS_CERRADOS = {"TL": 70, "BL": 90, "TR": 70, "BR": 90}
 
 # --- Tests --------------------------------------------------------------
 
-def test_pulso_en_los_extremos_y_el_centro():
-    assert pulso_para(0) == 102
-    assert pulso_para(90) == 307
-    assert pulso_para(180) == 512
+def test_duty_en_los_extremos_y_el_centro():
+    # 500-2500us sobre un periodo de 20ms (50Hz) = 2.5%-12.5% del duty_u16 (0-65535).
+    assert grados_a_duty_u16(0) == pytest.approx(1638, abs=1)
+    assert grados_a_duty_u16(90) == pytest.approx(4915, abs=1)
+    assert grados_a_duty_u16(180) == pytest.approx(8191, abs=1)
+
+
+def test_duty_directo_da_la_misma_posicion_fisica_que_el_pca9685_archivado():
+    # main_pca9685.py (archivado) usaba 102-512 en registros de 12 bits a 50Hz,
+    # equivalentes a ~498-2500us. Confirma que ambos enfoques apuntan al mismo
+    # ángulo físico, no solo que cada fórmula es internamente consistente.
+    def pulso_pca_en_us(grados):
+        pulso = 102 + (grados / 180.0) * (512 - 102)
+        return pulso * (20000 / 4096)
+
+    def us_directo(grados):
+        return PULSO_MIN_US + (grados / 180.0) * (PULSO_MAX_US - PULSO_MIN_US)
+
+    for grados in (0, 40, 90, 140, 180):
+        diferencia_us = abs(pulso_pca_en_us(grados) - us_directo(grados))
+        assert diferencia_us < 5, f"a {grados}°, difieren {diferencia_us:.1f}us"
 
 
 def test_cuello_centrado_cuando_los_ojos_estan_centrados():
