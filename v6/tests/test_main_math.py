@@ -112,3 +112,76 @@ def test_parpados_abiertos_y_cerrados_son_valores_distintos_por_canal():
         assert PARPADOS_ABIERTOS[canal] != PARPADOS_CERRADOS[canal], (
             f"canal {canal}: abierto y cerrado no deberían coincidir"
         )
+
+
+# --- Copiado de main.py: offsets de expresión y su aplicación ---------------
+
+LIMITES_PARPADOS = {"TL": (70, 170), "BL": (10, 90), "TR": (10, 70), "BR": (90, 160)}
+
+OFFSETS_EMOCIONES = {
+    "NEUTRAL":     {"TL": 0,    "TR": 0,   "BL": 0,   "BR": 0,   "TILT": 0},
+    "FELIZ":       {"TL": 0,    "TR": 0,   "BL": 30,  "BR": -30, "TILT": 0},
+    "ENOJADO":     {"TL": -40,  "TR": 40,  "BL": 0,   "BR": 0,   "TILT": 10},
+    "TRISTE":      {"TL": -30,  "TR": 30,  "BL": 20,  "BR": -20, "TILT": -20},
+    "SORPRENDIDO": {"TL": 20,   "TR": -20, "BL": -10, "BR": 10,  "TILT": -10},
+    "DORMIDO":     {"TL": -100, "TR": 100, "BL": 80,  "BR": -80, "TILT": -30},
+    "DUDA":        {"TL": -50,  "TR": 0,   "BL": 0,   "BR": 0,   "TILT": 10},
+    "SOSPECHA":    {"TL": -40,  "TR": 40,  "BL": 40,  "BR": -40, "TILT": 0},
+    "PENSATIVO":   {"TL": 0,    "TR": 0,   "BL": 10,  "BR": -10, "TILT": 15},
+    "NERVIOSO":    {"TL": 0,    "TR": 0,   "BL": 0,   "BR": 0,   "TILT": -5},
+}
+
+SECUENCIA_EMOCIONES = ("NEUTRAL", "FELIZ", "ENOJADO", "TRISTE", "SORPRENDIDO",
+                       "DORMIDO", "DUDA", "SOSPECHA", "PENSATIVO", "NERVIOSO")
+
+
+def objetivo_parpados_para(emocion):
+    """Misma lógica que actualizar_objetivo_expresion() en main.py, aislada de
+    todo lo demás (sin tocar TILT ni depender de objetivo_actual del firmware)."""
+    offsets = OFFSETS_EMOCIONES[emocion]
+    return {
+        canal: clamp(PARPADOS_ABIERTOS[canal] + offsets[canal], *LIMITES_PARPADOS[canal])
+        for canal in ("TL", "BL", "TR", "BR")
+    }
+
+
+def test_todas_las_emociones_de_la_secuencia_tienen_offsets_definidos():
+    for emocion in SECUENCIA_EMOCIONES:
+        assert emocion in OFFSETS_EMOCIONES
+
+
+def test_neutral_no_mueve_los_parpados_respecto_a_abierto():
+    assert objetivo_parpados_para("NEUTRAL") == PARPADOS_ABIERTOS
+
+
+def test_ninguna_emocion_saca_los_parpados_de_su_rango_mecanico():
+    for emocion in OFFSETS_EMOCIONES:
+        objetivo = objetivo_parpados_para(emocion)
+        for canal, valor in objetivo.items():
+            minimo, maximo = LIMITES_PARPADOS[canal]
+            assert minimo <= valor <= maximo, f"{emocion}/{canal}: {valor} fuera de ({minimo},{maximo})"
+
+
+def test_sorprendido_no_se_distingue_de_neutral_en_v6():
+    # Hallazgo real, no un bug: SORPRENDIDO empuja los 4 párpados hacia "más
+    # abiertos todavía", pero en v6 ya parten del máximo (no hay sincronía con la
+    # mirada que los abra menos, a diferencia del original). Los 4 canales
+    # clampan de vuelta al valor de PARPADOS_ABIERTOS — la expresión no se ve.
+    # Documentado en README-v6.md, sección de limitaciones.
+    assert objetivo_parpados_para("SORPRENDIDO") == PARPADOS_ABIERTOS
+
+
+def test_dormido_si_se_distingue_cierra_parcialmente_los_parpados():
+    # A diferencia de SORPRENDIDO, DORMIDO empuja hacia "más cerrado", que sí
+    # tiene margen desde la base abierta — la expresión sí debería verse.
+    objetivo = objetivo_parpados_para("DORMIDO")
+    assert objetivo != PARPADOS_ABIERTOS
+    # TL llega justo al límite de cerrado (70); BL casi al suyo (90).
+    assert objetivo["TL"] == 70
+    assert objetivo["BL"] == 90
+
+
+def test_feliz_sube_el_parpado_inferior_izquierdo_y_baja_el_derecho():
+    objetivo = objetivo_parpados_para("FELIZ")
+    assert objetivo["BL"] > PARPADOS_ABIERTOS["BL"]
+    assert objetivo["BR"] < PARPADOS_ABIERTOS["BR"]

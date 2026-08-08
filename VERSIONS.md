@@ -180,30 +180,39 @@ Detalle completo: [`v5/PLAN-v5.md`](v5/PLAN-v5.md).
 
 ---
 
-## v6.0.0 🔄 — Estado base (código completo, validación pendiente)
+## v6.0.0 🔄 — Estado base + secuencia de expresiones (código completo, validación pendiente)
 
-**Objetivo:** un programa dedicado (`estado_base.py`) que lleve los 8 servos a
-90° y los mantenga ahí — posición segura antes de desconectar la alimentación, o
-para recuperar un estado neutral tras un error, sin la lógica de rastreo/cuello/
-parpadeo de por medio.
+**Objetivo:** dos cosas. Un programa dedicado (`estado_base.py`) que lleve los 8
+servos a 90° y los mantenga ahí — posición segura antes de desconectar la
+alimentación, o para recuperar un estado neutral tras un error. Y en `main.py`,
+el primer paso de expresiones faciales: cambian solas cada 5 segundos, en un
+orden fijo, sin depender de voz ni sentimiento todavía.
 
-**Trae toda la base funcional de v5, sin cambios:** `main.py` (rastreo + cuello +
-parpadeo, PWM directo), `face_tracker.py`, `pico_serial.py`,
-`diagnostico_canal.py`. `main_pca9685.py` (la versión retirada) no se copió — no
-es "base funcional".
+**Trae toda la base funcional de v5, salvo `main.py`, sin cambios:**
+`face_tracker.py`, `pico_serial.py`, `diagnostico_canal.py`. `main_pca9685.py`
+(la versión retirada) no se copió — no es "base funcional".
 
 **Hito 1: Base funcional de v5 traída completa — COMPLETADO**
 - ✅ Copiado todo desde `v5/`, sin cambios de lógica
-- ✅ 25 tests heredados pasan dentro de `v6/.venv`, sin ninguna referencia a `v5/`
 
 **Hito 2: `estado_base.py` — COMPLETADO en código**
 - ✅ Centra los 8 servos con el mismo espaciado de 0.1s que usa `main.py` al
   arrancar (protección contra picos de corriente)
 - ✅ Misma fórmula de PWM y mismo mapeo de pines que `main.py` — verificado con
   un test que compara ambos directamente
+
+**Hito 3: Secuencia de expresiones faciales — COMPLETADO en código**
+- ✅ Los 10 offsets de párpados/cuello de `ojosMecanicos/main.py`, copiados
+  literalmente y verificados contra el original antes de usarlos
+- ✅ Temporizador fijo de 5s, cicla en orden, envuelve al final
+- ✅ Párpados incorporados al suavizado EMA; el parpadeo respeta la expresión
+  activa (no parpadea en DORMIDO, reabre a la posición de la expresión actual)
+- ✅ **Hallazgo real, confirmado con test:** SORPRENDIDO no se distingue de
+  NEUTRAL en v6 — su offset empuja hacia un extremo en el que los párpados ya
+  están (sin sincronía párpado-mirada, no hay margen para que se note)
 - [ ] Validar en la Pico real — no se puede hacer desde este entorno
 
-Detalle completo: [`v6/PLAN-v6.md`](v6/PLAN-v6.md).
+35 tests en total. Detalle completo: [`v6/PLAN-v6.md`](v6/PLAN-v6.md).
 
 ---
 

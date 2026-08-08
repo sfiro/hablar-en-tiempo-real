@@ -8,7 +8,8 @@ real · v3 con rastreador facial + enlace serial completos en código, falta val
 con cámara y hardware real · v4 completa y validada en hardware real (los ojos
 siguen el rostro correctamente) · v5 completa y validada en hardware real (+
 cuello y parpadeo, sin vibraciones, tras abandonar el PCA9685 por PWM directo) ·
-v6 (utilidad de estado base) código completo, falta validar en hardware real.
+v6 (utilidad de estado base + secuencia de expresiones cada 5s) código
+completo, falta validar en hardware real.
 
 ## 📦 Versiones disponibles
 
@@ -131,20 +132,29 @@ python -m pytest tests/ -v        # 25 tests
 
 Ver [`v5/README-v5.md`](v5/README-v5.md) y [`v5/PLAN-v5.md`](v5/PLAN-v5.md).
 
-### [v6](v6/) — Estado base (todos los servos a 90°) 🔄 (código completo, validación pendiente)
-**Estado:** Nuevo programa `estado_base.py`, que lleva los 8 servos a 90° (uno a
-uno, con espaciado contra picos de corriente) y los mantiene ahí — útil como
-posición segura antes de desconectar la alimentación, o para recuperar un estado
-neutral tras un error, sin la lógica de rastreo/cuello/parpadeo de por medio.
+### [v6](v6/) — Estado base + secuencia de expresiones 🔄 (código completo, validación pendiente)
+**Estado:** Dos cosas nuevas. `estado_base.py`: lleva los 8 servos a 90° (uno a
+uno, con espaciado contra picos de corriente) y los mantiene ahí — posición
+segura antes de desconectar la alimentación, o para recuperar un estado neutral
+tras un error. Y en `main.py`: **secuencia de expresiones faciales**, cambiando
+cada 5 segundos en un orden fijo (NEUTRAL → FELIZ → ENOJADO → ... → NERVIOSO →
+NEUTRAL), sin depender de voz ni sentimiento todavía — primer paso, no la
+versión final.
 
-**Trae toda la base funcional de v5**, sin cambios: `main.py` (rastreo + cuello +
-parpadeo, PWM directo), `face_tracker.py`, `pico_serial.py`,
-`diagnostico_canal.py`. `main.py` y `estado_base.py` son programas
-independientes — desplegar uno no reemplaza al otro.
+Los offsets de párpados/cuello por emoción son los mismos 10 de
+`ojosMecanicos/main.py`, copiados literalmente. Hallazgo real, verificado con un
+test: **SORPRENDIDO no se distingue de NEUTRAL en v6** — su offset empuja los
+párpados hacia "más abierto todavía", pero ya parten del máximo (v6 no
+sincroniza párpados con la mirada), así que recorta de vuelta al mismo valor.
+
+**Trae toda la base funcional de v5**, sin cambios salvo `main.py`:
+`face_tracker.py`, `pico_serial.py`, `diagnostico_canal.py`. `main.py` y
+`estado_base.py` son programas independientes — desplegar uno no reemplaza al
+otro.
 
 ```bash
 cd v6 && source .venv/bin/activate
-python -m pytest tests/ -v        # 29 tests
+python -m pytest tests/ -v        # 35 tests
 ```
 
 Ver [`v6/README-v6.md`](v6/README-v6.md) y [`v6/PLAN-v6.md`](v6/PLAN-v6.md).
@@ -184,6 +194,7 @@ Ver [`v6/README-v6.md`](v6/README-v6.md) y [`v6/PLAN-v6.md`](v6/PLAN-v6.md).
 | Cuello (PAN/TILT) | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) |
 | Parpadeo | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) |
 | Utilidad de estado base | — | — | — | — | — | 🔄 código listo, falta hardware |
+| Expresiones faciales | — | — | — | — | — | 🔄 secuencia fija cada 5s, falta hardware |
 | Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | ✅ Completa y validada | Validación pendiente |
 
 **Nota sobre independencia:** cada carpeta de versión tiene sus propias copias de
@@ -231,13 +242,13 @@ funcionando.
 │   ├── tests/              # 25 tests
 │   ├── README-v5.md        # Incluye la cronología completa de depuración
 │   └── PLAN-v5.md
-├── v6/                     # Estado base (todos los servos a 90°)
+├── v6/                     # Estado base + secuencia de expresiones
 │   ├── estado_base.py      # Nuevo: centra los 8 servos y los mantiene
-│   ├── main.py             # Copia autónoma de v5, sin cambios
+│   ├── main.py             # v5 + secuencia de expresiones cada 5s (nuevo)
 │   ├── face_tracker.py     # Copia autónoma de v5, sin cambios
 │   ├── pico_serial.py      # Copia autónoma de v5, sin cambios
 │   ├── diagnostico_canal.py # Copia autónoma de v5, sin cambios
-│   ├── tests/              # 29 tests
+│   ├── tests/              # 35 tests
 │   ├── README-v6.md
 │   └── PLAN-v6.md
 ├── docs/

@@ -33,11 +33,12 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
   v4 ("reintroducir complejidad por partes"). **Completa y validada en hardware
   real**, tras abandonar a mitad de la depuración el controlador PCA9685 por PWM
   directo desde la Pico — ver la sección de v5 más abajo.
-- **v6** — trae completa la base funcional de v5 (`main.py`, `face_tracker.py`,
-  `pico_serial.py`, `diagnostico_canal.py`, sin cambios de lógica) y añade
-  `estado_base.py`: un programa independiente de `main.py` que centra los 8
-  servos a 90° y los mantiene ahí — posición segura antes de desconectar la
-  alimentación, o para recuperar un estado neutral tras un error. Código
+- **v6** — trae completa la base funcional de v5 (`face_tracker.py`,
+  `pico_serial.py`, `diagnostico_canal.py`, sin cambios de lógica) y añade dos
+  cosas: `estado_base.py`, un programa independiente de `main.py` que centra
+  los 8 servos a 90° y los mantiene ahí; y en `main.py`, una secuencia de
+  expresiones faciales que cicla cada 5 segundos en orden fijo, sin depender de
+  voz ni sentimiento todavía — primer paso, no la versión final. Código
   completo con tests, falta validar en hardware real.
 
 **Regla del proyecto, válida para todas las versiones: ninguna versión importa
@@ -338,22 +339,14 @@ antes de considerar volver a un controlador PWM externo en una versión futura.
   (`Archivo → Guardar como → Raspberry Pi Pico`) + reinicio físico lo resuelve.
 - **No verificado todavía:** sesión larga sin reinicios ni degradación
 
-## v6 — Estado base
+## v6 — Estado base + secuencia de expresiones
 
-[`v6/estado_base.py`](v6/estado_base.py) es lo único nuevo de esta versión: un
-programa **independiente de `main.py`** que lleva los 8 servos a 90° (uno a uno,
-con el mismo espaciado de 0.1s contra picos de corriente que usa `main.py` al
-arrancar) y luego no hace nada más — el PWM de la Pico mantiene la señal sola, sin
-necesidad de un bucle que reenvíe el comando. Pensado para dejar el rig en una
-posición segura antes de desconectar la alimentación, o para recuperar un estado
-neutral tras un error, sin la lógica de rastreo/cuello/parpadeo de por medio.
-
-**El resto de v6 es la base funcional de v5, copiada sin cambios de lógica:**
-`main.py`, `face_tracker.py`, `pico_serial.py`, `diagnostico_canal.py`. Si tocas
-alguno de esos ficheros estando en v6, el arreglo no se propaga solo a v5 —
-replícalo a mano si aplica también ahí. `main_pca9685.py` (la versión retirada con
-PCA9685) **no** se copió a v6 a propósito: no es "base funcional", es código no
-usado, y su historial ya vive en `v5/README-v5.md`.
+[`v6/estado_base.py`](v6/estado_base.py) es un programa **independiente de
+`main.py`** que lleva los 8 servos a 90° (uno a uno, con el mismo espaciado de
+0.1s contra picos de corriente que usa `main.py` al arrancar) y luego no hace
+nada más — el PWM de la Pico mantiene la señal sola. Pensado para dejar el rig
+en una posición segura antes de desconectar la alimentación, o para recuperar
+un estado neutral tras un error.
 
 `estado_base.py` usa la misma fórmula de conversión de grados a PWM y el mismo
 mapeo de pines que `main.py` (`LR=GP2 UD=GP3 TL=GP4 BL=GP5 TR=GP6 BR=GP7 PAN=GP8
@@ -362,10 +355,47 @@ TILT=GP9`) — verificado con un test
 `duty_u16` de 90° calculado por ambos programas, para que "90°" sea la misma
 posición física en los dos.
 
-**Cómo se verificó:** sintaxis de los 5 ficheros, y 29 tests (25 heredados de v5 +
-4 nuevos para `estado_base.py`) corriendo dentro de `v6/.venv` sin ninguna
-referencia a `v5/`. **No verificado con la Pico física** — no hay una conectada a
-este entorno.
+**[`v6/main.py`](v6/main.py) añade la secuencia de expresiones faciales**, lo
+segundo nuevo de esta versión. Cicla en orden fijo por las 10 emociones de
+`ojosMecanicos/main.py` (`OFFSETS_EMOCIONES`, copiadas literalmente y
+reverificadas contra el original antes de usarlas), una cada 5 segundos — sin
+depender de voz ni sentimiento todavía, es el primer paso. Detalles del
+mecanismo:
+
+- Los offsets de párpados se aplican sobre la posición "abierta" fija (v6 no
+  sincroniza párpados con la mirada, a diferencia de `ojosMecanicos/main.py`) y
+  se recortan con `LIMITES_PARPADOS` (min, max por canal, copiado de
+  `servo_limits`). El offset de `TILT` se suma al que ya calcula
+  `actualizar_objetivo_cuello()`; el de `PAN` no se aplica porque en las 10
+  emociones originales siempre es 0.
+- Los párpados entran al mismo sistema de suavizado EMA que `LR/UD/PAN/TILT`,
+  para que el cambio de expresión sea gradual.
+- `parpadear()` no se dispara con `DORMIDO` activo (mismo criterio que el
+  original) y, al reabrir, vuelve a `objetivo_actual` (la posición de la
+  expresión activa), no siempre a "abierto".
+- **Hallazgo real, confirmado con test, no solo descrito:** antes de escribir
+  el código final se comprobó, para las 10 emociones × 4 canales, si el offset
+  sobre la base abierta se sale del rango mecánico. **SORPRENDIDO clampa en
+  los 4 canales** — su offset empuja hacia "más abierto todavía", pero en v6
+  los párpados ya parten del máximo (sin sincronía con la mirada que los
+  mantenga parcialmente cerrados como en el original), así que la expresión
+  **no se distingue de NEUTRAL**. `DORMIDO` clampa en 2 canales pero sí se
+  distingue (empuja hacia "más cerrado", que tiene margen). Documentado en
+  README-v6.md como limitación real de esta versión, no un bug a arreglar aquí.
+
+**El resto de v6 es la base funcional de v5, copiada sin cambios de lógica:**
+`face_tracker.py`, `pico_serial.py`, `diagnostico_canal.py`. Si tocas alguno de
+esos ficheros estando en v6, el arreglo no se propaga solo a v5 — replícalo a
+mano si aplica también ahí. `main_pca9685.py` (la versión retirada con
+PCA9685) **no** se copió a v6 a propósito: no es "base funcional", es código no
+usado, y su historial ya vive en `v5/README-v5.md`.
+
+**Cómo se verificó:** sintaxis de los 6 ficheros, y 35 tests (los heredados de
+v5 + 4 para `estado_base.py` + 6 para la secuencia de expresiones) corriendo
+dentro de `v6/.venv` sin ninguna referencia a `v5/`. **No verificado con la
+Pico física** — no hay una conectada a este entorno. Sin verificar tampoco: la
+interacción entre el temporizador de parpadeo y el de cambio de expresión, que
+son independientes entre sí y podrían coincidir en el tiempo.
 
 ## Cómo verificar cambios (todas las versiones)
 
