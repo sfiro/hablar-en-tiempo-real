@@ -115,9 +115,32 @@ aguanta los 3 subsistemas (ojos + cuello + párpados) moviéndose a la vez.
       la vez durante el cierre/apertura, para que sus picos de corriente se
       solapen menos. El parpadeo completo pasa de ~230ms a ~550ms (más lento,
       pero sigue leyéndose como parpadeo, no como "ojos cerrándose").
-- [ ] **Pendiente:** que el usuario pruebe con `PARPADEO_ACTIVO = True` y el nuevo
-      espaciado, y confirme si el temblor desaparece o si hace falta subir
-      `ESPACIADO_PARPADEO_S` todavía más
+- [x] **Resultado inesperado:** con el espaciado subido a 50ms, el usuario reporta
+      que el temblor **empeoró**: pasó de "cada ~5s" a "continuo, sin pausas desde
+      el arranque". Confirmado que el despliegue fue correcto (código nuevo en la
+      Pico, reiniciada). Confirmado también que ocurre **sin `face_tracker.py`
+      corriendo** — no es ruido de la cámara amplificado por PAN/TILT, es el
+      firmware solo.
+- [x] Releído `main.py` completo tres veces: la temporización (`time.ticks_add`/
+      `time.ticks_diff`) es idéntica al patrón que ya usa `ojosMecanicos/main.py`
+      con éxito. No se encontró ningún bug de lógica en la programación del
+      temporizador de parpadeo.
+- [x] Añadidos prints de diagnóstico en el disparador del parpadeo: cada vez que
+      dispara, imprime cuánto tiempo pasó y cuántas vueltas de bucle dio desde el
+      parpadeo anterior. Esto convierte "se siente continuo" en un dato medible:
+      - Si imprime intervalos normales (2000-6000ms, cientos de vueltas) → el
+        disparador funciona bien, y el temblor "continuo" no son parpadeos
+        repetidos; hay que buscar la causa en otro lado (hardware, no el
+        temporizador)
+      - Si imprime intervalos casi nulos (~0ms, ~0 vueltas) repetidamente → el
+        disparador SÍ está roto y parpadea sin parar
+      - Si el mensaje de arranque ("v5: iniciando...") se repite solo, en vez de
+        aparecer una sola vez → la Pico se está reiniciando en bucle (posible
+        brownout: la fuente no aguanta ni la secuencia de arranque), y lo que se
+        ve como "temblor continuo" sería en realidad la secuencia de apertura de
+        párpados + centrado repitiéndose una y otra vez, no el parpadeo
+- [ ] **Pendiente:** que el usuario corra esto con el monitor serial de Thonny
+      abierto y reporte literalmente qué se imprime
 
 ---
 

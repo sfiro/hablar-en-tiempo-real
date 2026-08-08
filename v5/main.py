@@ -199,7 +199,9 @@ def parpadear():
 # ==========================================
 # BUCLE PRINCIPAL
 # ==========================================
-proximo_parpadeo = time.ticks_add(time.ticks_ms(), random.randint(2000, 6000))
+ultimo_parpadeo_en = time.ticks_ms()
+proximo_parpadeo = time.ticks_add(ultimo_parpadeo_en, random.randint(2000, 6000))
+vueltas_de_bucle = 0
 
 try:
     while True:
@@ -223,8 +225,21 @@ try:
 
         ahora = time.ticks_ms()
         if PARPADEO_ACTIVO and time.ticks_diff(ahora, proximo_parpadeo) > 0:
+            # Diagnóstico: cuánto pasó desde el parpadeo anterior y cuántas
+            # vueltas de bucle dio en medio. Si esto imprime segundos normales
+            # (2-6s) y muchas vueltas, el disparador está bien y el temblor
+            # "continuo" no son parpadeos repetidos — hay que buscar en otro
+            # lado. Si imprime ~0s y ~0 vueltas una y otra vez, el disparador
+            # está roto y SÍ está parpadeando sin parar.
+            transcurrido = time.ticks_diff(ahora, ultimo_parpadeo_en)
+            print(f"[parpadeo] han pasado {transcurrido}ms, {vueltas_de_bucle} "
+                  f"vueltas de bucle desde el anterior")
             parpadear()
+            ultimo_parpadeo_en = ahora
+            vueltas_de_bucle = 0
             proximo_parpadeo = time.ticks_add(ahora, random.randint(2000, 6000))
+        else:
+            vueltas_de_bucle += 1
 
         time.sleep(0.01)
 
