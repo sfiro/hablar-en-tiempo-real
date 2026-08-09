@@ -240,6 +240,36 @@ orden fijo, sin depender de voz ni sentimiento todavía.
 
 ---
 
+## v7.0.0 ✅ — Seguimiento visual real + secuencia de expresiones (completa y validada en hardware real)
+
+**Objetivo:** sin cambios de lógica respecto a v6 — juntar, por primera vez,
+el rastreo facial real de una persona (`face_tracker.py`, en el Mac,
+enviando `LR,UD` por serial) con la secuencia de expresiones activa, y
+documentar con claridad qué expresiones siguen el rostro y cuáles no.
+
+**Hito 1: Base funcional de v6 traída completa — COMPLETADO**
+- ✅ Copiado todo desde `v6/`, sin cambios de lógica
+- ✅ Corregidas de paso tres referencias de documentación arrastradas sin
+  corregir desde v4/v5/v6 (un comentario de `requirements.txt` que aún decía
+  "v4", un docstring que decía "copia idéntica de `../v4/...`" en vez de
+  `../v6/...`, y un puntero a "README-v6.md, Historial de depuración" que en
+  realidad vive solo en `v5/README-v5.md`)
+
+**Hito 2: Documentar y validar el seguimiento real junto a la secuencia — COMPLETADO Y VALIDADO EN HARDWARE REAL**
+- ✅ Confirmado, leyendo el código, que `actualizar_objetivo_mirada_expresion()`
+  ya distinguía correctamente las 7 emociones que siguen el rastreo real
+  (NEUTRAL/FELIZ/ENOJADO/TRISTE/SORPRENDIDO/DORMIDO/SOSPECHA, que no tocan
+  `LR`/`UD`) de las 3 que lo ignoran a propósito (DUDA/PENSATIVO/NERVIOSO)
+- ✅ `README-v7.md`: nueva sección explícita sobre qué expresiones siguen el
+  rostro y cuáles no, con el mecanismo exacto
+- ✅ **Validado en hardware real por el usuario:** cámara + Pico funcionando a
+  la vez, con la secuencia de expresiones activa — "funcionó perfecto"
+
+49 tests en total (heredados de v6, sin cambios). Detalle completo:
+[`v7/PLAN-v7.md`](v7/PLAN-v7.md).
+
+---
+
 ## Política de versiones
 
 ### Ramas y tags
@@ -288,6 +318,7 @@ cd v2             # entra en v2
 | v4.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
 | v5.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
 | v6.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
+| v7.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
 
 ---
 

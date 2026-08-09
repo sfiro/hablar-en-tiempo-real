@@ -1,10 +1,10 @@
 # CLAUDE.md
 
 Guía de todo el proyecto para trabajar en este repositorio. Cada versión (`v1/`, `v2/`,
-`v3/`, `v4/`, `v5/`, `v6/`) tiene su propia documentación detallada; este fichero es
-el mapa general y recoge los hechos que cruzan versiones. Empieza aquí, salta al
-`CLAUDE-vN.md` o `README-vN.md` de la versión concreta cuando necesites el detalle
-de implementación.
+`v3/`, `v4/`, `v5/`, `v6/`, `v7/`) tiene su propia documentación detallada; este
+fichero es el mapa general y recoge los hechos que cruzan versiones. Empieza aquí,
+salta al `CLAUDE-vN.md` o `README-vN.md` de la versión concreta cuando necesites el
+detalle de implementación.
 
 ## Qué es el proyecto
 
@@ -44,25 +44,33 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
   cabeza gacha en TRISTE, mirada fija/errática en DUDA/PENSATIVO/NERVIOSO en
   vez de seguir el rastreo). **Completa y validada en hardware real** por el
   usuario tras esos ajustes: "todo ha funcionado bien". Versión cerrada.
+- **v7** — misma base de v6, sin cambios de lógica en el firmware. El objetivo
+  es juntar, por primera vez, el rastreo facial real (`face_tracker.py`, Mac)
+  con la secuencia de expresiones activa: 7 de las 10 emociones
+  (NEUTRAL/FELIZ/ENOJADO/TRISTE/SORPRENDIDO/DORMIDO/SOSPECHA) siguen el rostro
+  real porque no tocan `LR`/`UD`; las otras 3 (DUDA/PENSATIVO/NERVIOSO) lo
+  ignoran a propósito, como ya estaban construidas desde v6. **Completa y
+  validada en hardware real** por el usuario, con cámara y Pico funcionando a
+  la vez: "funcionó perfecto". Versión cerrada.
 
 **Regla del proyecto, válida para todas las versiones: ninguna versión importa
 código de otra carpeta de versión.** v2 es una copia de v1 con el añadido de
-sentimiento, no un import de v1. v4, v5 y v6 tienen sus propias copias de
+sentimiento, no un import de v1. v4, v5, v6 y v7 tienen sus propias copias de
 `face_tracker.py` y `pico_serial.py` (idénticas entre sí, y con v3), no las importan
 con una ruta relativa cruzada. Esto es deliberado y se pidió explícitamente:
 **cada versión debe poder ejecutarse borrando todas las demás carpetas de
 versión.** Si añades una versión nueva que reutiliza algo de otra, copia el
 fichero, no lo importes. Excepción deliberada: `v5/main_pca9685.py` (la versión
-retirada del firmware) no se copió a v6, porque no es "base funcional" — es
-código explícitamente no usado, y su historial ya vive en `v5/README-v5.md`.
+retirada del firmware) no se copió a v6 ni v7, porque no es "base funcional" —
+es código explícitamente no usado, y su historial ya vive en `v5/README-v5.md`.
 
-Cada carpeta de versión de Mac (v1/v2/v3, y la parte Mac de v4/v5/v6) tiene su propio
-`.venv/`, `requirements.txt` y `.env`.
+Cada carpeta de versión de Mac (v1/v2/v3, y la parte Mac de v4/v5/v6/v7) tiene su
+propio `.venv/`, `requirements.txt` y `.env`.
 
-**Las piezas que rompen el patrón de venv son `main.py` (v4/v5/v6) y
-`estado_base.py` (v6):** no tienen entorno porque no son Python que corra en el
+**Las piezas que rompen el patrón de venv son `main.py` (v4/v5/v6/v7) y
+`estado_base.py` (v6/v7):** no tienen entorno porque no son Python que corra en el
 Mac — son firmware MicroPython que se copia a la Pico (con Thonny o `mpremote`) y
-se ejecuta ahí. El resto de v4/v5/v6 (`face_tracker.py`, `pico_serial.py`, sus
+se ejecuta ahí. El resto de v4/v5/v6/v7 (`face_tracker.py`, `pico_serial.py`, sus
 tests) sí sigue el patrón normal de venv, igual que v1/v2/v3.
 
 ## Entorno, por versión
@@ -428,6 +436,46 @@ NERVIOSO, y el recentrado de mirada al cambiar de expresión) — confirmado:
 "todo ha funcionado bien", incluida la interacción entre el temporizador de
 parpadeo, el de cambio de expresión, y los overrides de mirada, sin problema
 observado. Versión cerrada.
+
+## v7 — Seguimiento visual real + secuencia de expresiones
+
+[`v7/main.py`](v7/main.py) es una copia de [`v6/main.py`](v6/main.py) **sin
+ningún cambio de lógica** — solo referencias de documentación actualizadas
+(título, mensajes de arranque, punteros a README-v7.md/PLAN-v7.md). El
+objetivo de v7 no es cambiar el firmware, sino juntar y validar por primera
+vez dos piezas que hasta ahora se habían probado por separado: el rastreo
+facial real de una persona (`face_tracker.py`, en el Mac, enviando `LR,UD` por
+serial) y la secuencia de expresiones activa (que hasta ahora solo se probó
+sin cámara conectada, o sin la secuencia corriendo a la vez).
+
+**El mecanismo ya existía en v6, sin proponérselo como objetivo explícito:**
+en el bucle principal, `procesar_comando()` actualiza `objetivo_actual[LR]/
+[UD]` cada vez que llega un comando serial; después,
+`actualizar_objetivo_mirada_expresion()` solo sobreescribe esos valores para
+`DUDA`, `PENSATIVO` y `NERVIOSO` — para las otras 7 emociones
+(`NEUTRAL`/`FELIZ`/`ENOJADO`/`TRISTE`/`SORPRENDIDO`/`DORMIDO`/`SOSPECHA`) no
+hace nada, así que la mirada real que llegó por serial queda intacta y el
+offset de cada emoción se aplica encima de ella, no en su lugar. v7 promueve
+esta distinción a objetivo central de la versión, documentándola con
+claridad en [`v7/README-v7.md`](v7/README-v7.md) en vez de dejarla como un
+detalle interno de implementación.
+
+**Corregidas de paso, encontradas al copiar los ficheros** (stale desde hacía
+varias versiones, no introducidas por v7): `v6/requirements.txt` seguía con un
+comentario de cabecera que decía "v4" (arrastrado sin corregir desde v4→v5→v6);
+el docstring de `face_tracker.py`/`pico_serial.py` decía "copia idéntica de
+`../v4/...`" en vez de mencionar la copia inmediata real; y el docstring de
+`tests/test_main_math.py` apuntaba a "README-v6.md, Historial de depuración"
+para la historia del PCA9685, cuando esa sección en realidad solo existe en
+`v5/README-v5.md` — nunca se copió a v6. Las tres corregidas en v7; no se
+tocó v6 para no introducir cambios fuera de lo pedido en esa versión ya
+cerrada.
+
+**Cómo se verificó:** sintaxis de los 5 ficheros `.py`, y los mismos 49 tests
+de v6 (sin cambios, porque la matemática no cambió) corriendo dentro de
+`v7/.venv` sin ninguna referencia a `v6/`. **Completa y validada en hardware
+real por el usuario:** con cámara y Pico funcionando a la vez y la secuencia
+de expresiones activa — "funcionó perfecto". Versión cerrada.
 
 ## Cómo verificar cambios (todas las versiones)
 

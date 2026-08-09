@@ -1,0 +1,8 @@
+# v7 — Rastreo facial + enlace serial a la Pico (lado Mac).
+# Autónomo: no depende de v1-v6. No incluye voz ni análisis de emociones a
+# propósito — el lado Mac es solo "cámara -> x,y -> servos", ver README-v7.md.
+#
+# Fijado a la serie 4.x: OpenCV 5.0 movió CascadeClassifier a opencv-contrib-python
+# (módulo xobjdetect). Ver CLAUDE.md para el detalle.
+opencv-python>=4.9.0,<5
+pyserial>=3.5
