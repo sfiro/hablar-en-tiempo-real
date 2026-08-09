@@ -8,8 +8,10 @@ real · v3 con rastreador facial + enlace serial completos en código, falta val
 con cámara y hardware real · v4 completa y validada en hardware real (los ojos
 siguen el rostro correctamente) · v5 completa y validada en hardware real (+
 cuello y parpadeo, sin vibraciones, tras abandonar el PCA9685 por PWM directo) ·
-v6 (utilidad de estado base + secuencia de expresiones cada 5s) código
-completo, falta validar en hardware real.
+v6 completa y validada en hardware real (utilidad de estado base + secuencia
+de expresiones cada 5s, con ajustes de realismo tras la primera prueba —
+reposo de párpados, SORPRENDIDO/FELIZ/SOSPECHA/DORMIDO recalculados, cabeza
+gacha en TRISTE, mirada fija/errática en DUDA/PENSATIVO/NERVIOSO).
 
 ## 📦 Versiones disponibles
 
@@ -132,20 +134,25 @@ python -m pytest tests/ -v        # 25 tests
 
 Ver [`v5/README-v5.md`](v5/README-v5.md) y [`v5/PLAN-v5.md`](v5/PLAN-v5.md).
 
-### [v6](v6/) — Estado base + secuencia de expresiones 🔄 (código completo, validación pendiente)
+### [v6](v6/) — Estado base + secuencia de expresiones ✅ (completa y validada en hardware real)
 **Estado:** Dos cosas nuevas. `estado_base.py`: lleva los 8 servos a 90° (uno a
 uno, con espaciado contra picos de corriente) y los mantiene ahí — posición
 segura antes de desconectar la alimentación, o para recuperar un estado neutral
 tras un error. Y en `main.py`: **secuencia de expresiones faciales**, cambiando
 cada 5 segundos en un orden fijo (NEUTRAL → FELIZ → ENOJADO → ... → NERVIOSO →
 NEUTRAL), sin depender de voz ni sentimiento todavía — primer paso, no la
-versión final.
+versión final. **Confirmado por el usuario en la Pico real: "todo ha
+funcionado bien".**
 
-Los offsets de párpados/cuello por emoción son los mismos 10 de
-`ojosMecanicos/main.py`, copiados literalmente. Hallazgo real, verificado con un
-test: **SORPRENDIDO no se distingue de NEUTRAL en v6** — su offset empuja los
-párpados hacia "más abierto todavía", pero ya parten del máximo (v6 no
-sincroniza párpados con la mirada), así que recorta de vuelta al mismo valor.
+Tras la primera prueba, se ajustaron varias expresiones para verse más
+realistas, y esos ajustes también se validaron en hardware: los párpados en
+reposo ya no parten 100% abiertos sino a un 40% de cierre (esto resolvió de
+raíz un hallazgo real anterior — SORPRENDIDO no se distinguía de NEUTRAL
+porque su offset no tenía margen mecánico para abrir más), FELIZ y SOSPECHA se
+recalcularon para notarse sobre el nuevo reposo, TRISTE fuerza la cabeza a su
+mínimo mecánico (cabeza gacha), y DUDA/PENSATIVO/NERVIOSO ahora fijan o mueven
+la mirada por su cuenta (barrido lateral, mirada arriba-izquierda, y saltos al
+azar respectivamente) en vez de seguir el rastreo facial mientras duran.
 
 **Trae toda la base funcional de v5**, sin cambios salvo `main.py`:
 `face_tracker.py`, `pico_serial.py`, `diagnostico_canal.py`. `main.py` y
@@ -154,7 +161,7 @@ otro.
 
 ```bash
 cd v6 && source .venv/bin/activate
-python -m pytest tests/ -v        # 35 tests
+python -m pytest tests/ -v        # 49 tests
 ```
 
 Ver [`v6/README-v6.md`](v6/README-v6.md) y [`v6/PLAN-v6.md`](v6/PLAN-v6.md).
@@ -193,9 +200,9 @@ Ver [`v6/README-v6.md`](v6/README-v6.md) y [`v6/PLAN-v6.md`](v6/PLAN-v6.md).
 | Rastreo facial (ojos) | — | — | 🔄 falta cámara real | ✅ validado en real | ✅ (hereda de v4) | ✅ (hereda de v5) |
 | Cuello (PAN/TILT) | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) |
 | Parpadeo | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) |
-| Utilidad de estado base | — | — | — | — | — | 🔄 código listo, falta hardware |
-| Expresiones faciales | — | — | — | — | — | 🔄 secuencia fija cada 5s, falta hardware |
-| Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | ✅ Completa y validada | Validación pendiente |
+| Utilidad de estado base | — | — | — | — | — | ✅ validada en real |
+| Expresiones faciales | — | — | — | — | — | ✅ secuencia + ajustes de realismo, validados en real |
+| Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada |
 
 **Nota sobre independencia:** cada carpeta de versión tiene sus propias copias de
 cualquier código que reutilice de otra (nunca lo importa con una ruta cruzada). Por
@@ -248,7 +255,7 @@ funcionando.
 │   ├── face_tracker.py     # Copia autónoma de v5, sin cambios
 │   ├── pico_serial.py      # Copia autónoma de v5, sin cambios
 │   ├── diagnostico_canal.py # Copia autónoma de v5, sin cambios
-│   ├── tests/              # 35 tests
+│   ├── tests/              # 49 tests
 │   ├── README-v6.md
 │   └── PLAN-v6.md
 ├── docs/

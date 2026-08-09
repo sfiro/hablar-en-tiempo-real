@@ -180,7 +180,7 @@ Detalle completo: [`v5/PLAN-v5.md`](v5/PLAN-v5.md).
 
 ---
 
-## v6.0.0 🔄 — Estado base + secuencia de expresiones (código completo, validación pendiente)
+## v6.0.0 ✅ — Estado base + secuencia de expresiones (completa y validada en hardware real)
 
 **Objetivo:** dos cosas. Un programa dedicado (`estado_base.py`) que lleve los 8
 servos a 90° y los mantenga ahí — posición segura antes de desconectar la
@@ -195,11 +195,12 @@ orden fijo, sin depender de voz ni sentimiento todavía.
 **Hito 1: Base funcional de v5 traída completa — COMPLETADO**
 - ✅ Copiado todo desde `v5/`, sin cambios de lógica
 
-**Hito 2: `estado_base.py` — COMPLETADO en código**
+**Hito 2: `estado_base.py` — COMPLETADO, validado en hardware real**
 - ✅ Centra los 8 servos con el mismo espaciado de 0.1s que usa `main.py` al
   arrancar (protección contra picos de corriente)
 - ✅ Misma fórmula de PWM y mismo mapeo de pines que `main.py` — verificado con
   un test que compara ambos directamente
+- ✅ Validado en la Pico real por el usuario
 
 **Hito 3: Secuencia de expresiones faciales — COMPLETADO en código**
 - ✅ Los 10 offsets de párpados/cuello de `ojosMecanicos/main.py`, copiados
@@ -207,12 +208,35 @@ orden fijo, sin depender de voz ni sentimiento todavía.
 - ✅ Temporizador fijo de 5s, cicla en orden, envuelve al final
 - ✅ Párpados incorporados al suavizado EMA; el parpadeo respeta la expresión
   activa (no parpadea en DORMIDO, reabre a la posición de la expresión actual)
-- ✅ **Hallazgo real, confirmado con test:** SORPRENDIDO no se distingue de
-  NEUTRAL en v6 — su offset empuja hacia un extremo en el que los párpados ya
-  están (sin sincronía párpado-mirada, no hay margen para que se note)
-- [ ] Validar en la Pico real — no se puede hacer desde este entorno
+- ✅ **Hallazgo real, confirmado con test:** SORPRENDIDO no se distinguía de
+  NEUTRAL en v6 — su offset empujaba hacia un extremo en el que los párpados ya
+  estaban (sin sincronía párpado-mirada, no había margen para que se note).
+  **Resuelto en el Hito 4** bajando el reposo, en vez de añadir esa sincronía.
+- ✅ Validado en la Pico real (rastreo + cuello + parpadeo) por el usuario
 
-35 tests en total. Detalle completo: [`v6/PLAN-v6.md`](v6/PLAN-v6.md).
+**Hito 4: Ajustes de realismo, tras probar en hardware — COMPLETADO Y VALIDADO EN HARDWARE REAL**
+- ✅ `PARPADOS_REPOSO`: nueva posición de reposo al 40% de cierre (no el 100%
+  abierto) — resuelve de raíz el hallazgo de SORPRENDIDO del Hito 3
+- ✅ SORPRENDIDO ahora se aplica sin clamping en los 4 canales (confirmado con
+  test); DORMIDO, como efecto colateral esperado, ahora cierra los 4 canales
+  por completo
+- ✅ FELIZ y SOSPECHA recalculados para notarse sobre el nuevo reposo (los
+  offsets originales de `ojosMecanicos`, pensados para 100% abierto, casi no
+  se notaban)
+- ✅ TRISTE fuerza la cabeza (`TILT`) a su mínimo mecánico en vez de un offset
+  relativo — pedido explícito, para que la cabeza gacha se note siempre igual
+- ✅ DUDA, PENSATIVO y NERVIOSO ahora ignoran el rastreo facial y fijan o
+  mueven la mirada por su cuenta mientras duran (barrido lateral 40↔140 en
+  DUDA; mirada fija arriba-izquierda en PENSATIVO; saltos al azar cada 1s en
+  NERVIOSO) — el cuello acompaña los tres gestos
+- ✅ Corregido un bug real: al salir de DUDA/PENSATIVO/NERVIOSO, la mirada
+  ahora vuelve al centro antes de la siguiente expresión, en vez de heredar
+  la posición desviada
+- ✅ **Validado en la Pico real por el usuario:** "todo ha funcionado bien" —
+  incluida la interacción entre parpadeo, cambio de expresión y los overrides
+  de mirada, sin problema observado
+
+49 tests en total. Detalle completo: [`v6/PLAN-v6.md`](v6/PLAN-v6.md).
 
 ---
 
@@ -263,7 +287,7 @@ cd v2             # entra en v2
 | v3.0.0  | 🔄 Código completo (Hito 0 y 1), falta cámara/Pico reales | macOS + Raspberry Pi Pico (opcional) |
 | v4.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
 | v5.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
-| v6.0.0  | 🔄 Código completo, falta validar en hardware real | Raspberry Pi Pico (MicroPython) |
+| v6.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
 
 ---
 

@@ -8,9 +8,12 @@
 # Expresiones: por ahora cambian solas cada 5 segundos, cicladas en orden fijo —
 # todavía no dependen de voz ni de sentimiento (eso es trabajo futuro). Los
 # offsets de párpados/cuello por emoción son los mismos 10 de
-# ojosMecanicos/main.py (OFFSETS_EMOCIONES), copiados literalmente, aplicados
-# sobre la posición "abierta" fija de los párpados (v6 no sincroniza los párpados
-# con la mirada todavía, a diferencia del original).
+# ojosMecanicos/main.py (OFFSETS_EMOCIONES, salvo FELIZ y SOSPECHA recalculados
+# — ver el comentario junto a OFFSETS_EMOCIONES), aplicados sobre una posición
+# de reposo fija de los párpados, no completamente abierta (v6 no sincroniza los
+# párpados con la mirada todavía, a diferencia del original — ver
+# PARPADOS_REPOSO). DUDA y PENSATIVO, además, fijan la mirada (LR/UD) en vez de
+# seguir el rastreo facial mientras están activas.
 #
 # Por qué no hay PCA9685: en v5, la primera versión de este firmware sí lo usaba
 # (sigue disponible en ../v5/main_pca9685.py, como referencia histórica — no se
@@ -74,6 +77,21 @@ def mover_servo(canal, grados):
 PARPADOS_ABIERTOS = {CANAL_TL: 170, CANAL_BL: 10, CANAL_TR: 10, CANAL_BR: 160}
 PARPADOS_CERRADOS = {CANAL_TL: 70, CANAL_BL: 90, CANAL_TR: 70, CANAL_BR: 90}
 
+# Posición real de reposo (usada por NEUTRAL y como base de todos los offsets de
+# expresión): NO es el extremo 100% abierto, sino un 40% del camino hacia
+# CERRADO. Pedido explícito tras probar en hardware real: con los párpados en
+# reposo totalmente abiertos, SORPRENDIDO (que empuja hacia "más abierto
+# todavía") no tenía margen mecánico para distinguirse de NEUTRAL — los 4
+# canales clampaban de vuelta exactamente al mismo valor (ver README-v6.md,
+# versión anterior de esta limitación). 40% es el mínimo con margen cómodo en
+# los 4 canales de SORPRENDIDO (el canal TR es el más exigente, con un mínimo
+# de ~34%).
+CIERRE_REPOSO = 0.40
+PARPADOS_REPOSO = {
+    canal: PARPADOS_ABIERTOS[canal] + CIERRE_REPOSO * (PARPADOS_CERRADOS[canal] - PARPADOS_ABIERTOS[canal])
+    for canal in PARPADOS_ABIERTOS
+}
+
 # Límites mecánicos por canal, como (mínimo, máximo) — a diferencia de
 # PARPADOS_ABIERTOS/CERRADOS, aquí el orden no importa el sentido "abierto" o
 # "cerrado", solo sirve para no forzar un servo más allá de su rango físico al
@@ -99,18 +117,50 @@ ALPHA = 0.1
 PARPADEO_ACTIVO = True    # False lo desactiva por completo, para pruebas
 ESPACIADO_PARPADEO_S = 0.05  # separación entre cada servo de párpado al parpadear
 
+# DUDA: en vez de seguir el rastreo facial, los ojos barren solos de un extremo
+# a otro de LR — gesto de "pensando, mirando de lado a lado". Un tramo (de un
+# extremo al otro) tarda esto; como INTERVALO_EXPRESION_MS son 5000ms, un tramo
+# de 2500ms completa una ida y vuelta entera durante toda la expresión.
+DUDA_TRAMO_MS = 2500
+
+# PENSATIVO: en vez de seguir el rastreo facial, los ojos (y el cuello, que los
+# sigue) se fijan mirando arriba a la izquierda. UD=40 es "arriba" en este
+# montaje — mismo criterio que ojosMecanicos/main.py, donde "mirar hacia
+# arriba" usa valores bajos de UD (random.randint(40, 60)).
+PENSATIVO_LR, PENSATIVO_UD = 40, 40
+
+# NERVIOSO: en vez de seguir el rastreo facial, los ojos saltan solos a un
+# punto al azar cada segundo — gesto de "mirando a cualquier lado, evitando
+# el contacto visual". Rango moderado (no los extremos mecánicos): saltos
+# claramente notorios sin llegar a un movimiento exagerado.
+NERVIOSO_SALTO_MS = 1000
+NERVIOSO_LR_MIN, NERVIOSO_LR_MAX = 65, 115
+NERVIOSO_UD_MIN, NERVIOSO_UD_MAX = 65, 115
+
 # Offsets de párpados y cuello por emoción, copiados literalmente de
-# OFFSETS_EMOCIONES en ojosMecanicos/main.py. No se incluye el offset de PAN: en
-# las 10 emociones originales siempre es 0, así que no hay nada que aplicar.
+# OFFSETS_EMOCIONES en ojosMecanicos/main.py, salvo FELIZ y SOSPECHA (ver abajo).
+# No se incluye el offset de PAN: en las 10 emociones originales siempre es 0,
+# así que no hay nada que aplicar.
 OFFSETS_EMOCIONES = {
     "NEUTRAL":     {"TL": 0,    "TR": 0,   "BL": 0,   "BR": 0,   "TILT": 0},
-    "FELIZ":       {"TL": 0,    "TR": 0,   "BL": 30,  "BR": -30, "TILT": 0},
+    # FELIZ recalculado para v6 (no es el de ojosMecanicos): con los párpados ya
+    # al 40% de cierre en reposo, el offset original (+30/-30, pensado para una
+    # base 100% abierta) apenas se notaba. Recalculado para que el párpado
+    # inferior suba un 50% del camino restante hacia CERRADO desde el reposo
+    # (BL: 42+24=66 de 90; BR: 132-21=111 de 90) — el superior se queda en la
+    # posición neutral (offset 0, sin cambio).
+    "FELIZ":       {"TL": 0,    "TR": 0,   "BL": 24,  "BR": -21, "TILT": 0},
     "ENOJADO":     {"TL": -40,  "TR": 40,  "BL": 0,   "BR": 0,   "TILT": 10},
+    # El TILT de TRISTE (-20, el de ojosMecanicos) queda aquí sin usarse: la
+    # cabeza gacha se fuerza al mínimo mecánico en actualizar_objetivo_expresion(),
+    # no como offset relativo — ver esa función.
     "TRISTE":      {"TL": -30,  "TR": 30,  "BL": 20,  "BR": -20, "TILT": -20},
     "SORPRENDIDO": {"TL": 20,   "TR": -20, "BL": -10, "BR": 10,  "TILT": -10},
     "DORMIDO":     {"TL": -100, "TR": 100, "BL": 80,  "BR": -80, "TILT": -30},
     "DUDA":        {"TL": -50,  "TR": 0,   "BL": 0,   "BR": 0,   "TILT": 10},
-    "SOSPECHA":    {"TL": -40,  "TR": 40,  "BL": 40,  "BR": -40, "TILT": 0},
+    # SOSPECHA recalculado para v6, mismo motivo que FELIZ: los 4 canales
+    # cierran un 80% del camino restante hacia CERRADO desde el reposo.
+    "SOSPECHA":    {"TL": -48,  "TR": 29,  "BL": 38,  "BR": -34, "TILT": 0},
     "PENSATIVO":   {"TL": 0,    "TR": 0,   "BL": 10,  "BR": -10, "TILT": 15},
     "NERVIOSO":    {"TL": 0,    "TR": 0,   "BL": 0,   "BR": 0,   "TILT": -5},
 }
@@ -129,7 +179,7 @@ emocion_actual = SECUENCIA_EMOCIONES[indice_emocion]
 EJES = (CANAL_LR, CANAL_UD, CANAL_PAN, CANAL_TILT, CANAL_TL, CANAL_BL, CANAL_TR, CANAL_BR)
 
 posicion_actual = {CANAL_LR: 90.0, CANAL_UD: 90.0, CANAL_PAN: 90.0, CANAL_TILT: 90.0}
-posicion_actual.update({canal: float(grados) for canal, grados in PARPADOS_ABIERTOS.items()})
+posicion_actual.update({canal: float(grados) for canal, grados in PARPADOS_REPOSO.items()})
 objetivo_actual = dict(posicion_actual)
 
 
@@ -142,7 +192,7 @@ def clamp(valor, minimo, maximo):
 # ==========================================
 print("v6: iniciando (rastreo de ojos + cuello + parpadeo + expresiones)...")
 
-for canal, grados in PARPADOS_ABIERTOS.items():
+for canal, grados in PARPADOS_REPOSO.items():
     mover_servo(canal, grados)
     time.sleep(0.1)
 
@@ -150,7 +200,7 @@ for eje in (CANAL_LR, CANAL_UD, CANAL_PAN, CANAL_TILT):
     mover_servo(eje, 90)
     time.sleep(0.1)
 
-print("Ojos y cuello centrados, párpados abiertos. Esperando \"LR,UD\" por serial.")
+print("Ojos y cuello centrados, párpados en reposo. Esperando \"LR,UD\" por serial.")
 print("Expresión inicial:", emocion_actual)
 
 # ==========================================
@@ -183,18 +233,53 @@ def actualizar_objetivo_cuello():
 
 
 def actualizar_objetivo_expresion():
-    """Aplica los offsets de la emoción actual sobre la base "abierta" fija de
-    los párpados (v6 no sincroniza párpados con la mirada todavía) y los suma al
-    TILT ya calculado por actualizar_objetivo_cuello() en esta misma vuelta del
-    bucle. Debe llamarse después de esa función, no antes."""
+    """Aplica los offsets de la emoción actual sobre la posición de reposo fija
+    de los párpados (v6 no sincroniza párpados con la mirada todavía) y, salvo
+    en TRISTE (ver abajo), los suma al TILT ya calculado por
+    actualizar_objetivo_cuello() en esta misma vuelta del bucle. Debe llamarse
+    después de esa función, no antes."""
     offsets = OFFSETS_EMOCIONES[emocion_actual]
     for canal in (CANAL_TL, CANAL_BL, CANAL_TR, CANAL_BR):
-        base = PARPADOS_ABIERTOS[canal]
+        base = PARPADOS_REPOSO[canal]
         minimo, maximo = LIMITES_PARPADOS[canal]
         objetivo_actual[canal] = clamp(base + offsets[canal], minimo, maximo)
-    objetivo_actual[CANAL_TILT] = clamp(
-        objetivo_actual[CANAL_TILT] + offsets["TILT"], TILT_MIN, TILT_MAX
-    )
+    if emocion_actual == "TRISTE":
+        # Cabeza gacha hasta el tope mecánico (pedido explícito, "hasta el
+        # mínimo inferior"), no un offset relativo sobre el TILT que sigue a
+        # la mirada — así se nota siempre igual de marcada, sin importar hacia
+        # dónde esté mirando el rastreo facial en ese momento.
+        objetivo_actual[CANAL_TILT] = TILT_MIN
+    else:
+        objetivo_actual[CANAL_TILT] = clamp(
+            objetivo_actual[CANAL_TILT] + offsets["TILT"], TILT_MIN, TILT_MAX
+        )
+
+
+def actualizar_objetivo_mirada_expresion():
+    """Para las expresiones que fijan la mirada en vez de seguir el rastreo
+    facial (DUDA, PENSATIVO, NERVIOSO), sobreescribe objetivo_actual[LR]/[UD]
+    aquí, antes de que actualizar_objetivo_cuello() calcule PAN/TILT a partir
+    de ellos — así el cuello también acompaña el gesto. Para el resto de
+    expresiones no hace nada y el rastreo normal (procesar_comando) sigue
+    mandando."""
+    global ultimo_salto_nervioso
+    if emocion_actual == "DUDA":
+        transcurrido = time.ticks_diff(time.ticks_ms(), inicio_duda) % (DUDA_TRAMO_MS * 2)
+        if transcurrido < DUDA_TRAMO_MS:
+            progreso = transcurrido / DUDA_TRAMO_MS
+            objetivo_actual[CANAL_LR] = LR_MIN + progreso * (LR_MAX - LR_MIN)
+        else:
+            progreso = (transcurrido - DUDA_TRAMO_MS) / DUDA_TRAMO_MS
+            objetivo_actual[CANAL_LR] = LR_MAX - progreso * (LR_MAX - LR_MIN)
+    elif emocion_actual == "PENSATIVO":
+        objetivo_actual[CANAL_LR] = PENSATIVO_LR
+        objetivo_actual[CANAL_UD] = PENSATIVO_UD
+    elif emocion_actual == "NERVIOSO":
+        ahora = time.ticks_ms()
+        if time.ticks_diff(ahora, ultimo_salto_nervioso) >= NERVIOSO_SALTO_MS:
+            objetivo_actual[CANAL_LR] = float(random.randint(NERVIOSO_LR_MIN, NERVIOSO_LR_MAX))
+            objetivo_actual[CANAL_UD] = float(random.randint(NERVIOSO_UD_MIN, NERVIOSO_UD_MAX))
+            ultimo_salto_nervioso = ahora
 
 
 def parpadear():
@@ -217,6 +302,8 @@ def parpadear():
 # ==========================================
 proximo_parpadeo = time.ticks_add(time.ticks_ms(), random.randint(2000, 6000))
 proxima_expresion = time.ticks_add(time.ticks_ms(), INTERVALO_EXPRESION_MS)
+inicio_duda = time.ticks_ms()  # se reinicia cada vez que empieza una DUDA nueva
+ultimo_salto_nervioso = time.ticks_ms()  # se reinicia cada vez que empieza un NERVIOSO nuevo
 
 try:
     while True:
@@ -228,6 +315,7 @@ try:
             except Exception:
                 pass
 
+        actualizar_objetivo_mirada_expresion()
         actualizar_objetivo_cuello()
         actualizar_objetivo_expresion()
 
@@ -249,8 +337,24 @@ try:
             proximo_parpadeo = time.ticks_add(ahora, random.randint(2000, 6000))
 
         if time.ticks_diff(ahora, proxima_expresion) > 0:
+            expresion_anterior = emocion_actual
             indice_emocion = (indice_emocion + 1) % len(SECUENCIA_EMOCIONES)
             emocion_actual = SECUENCIA_EMOCIONES[indice_emocion]
+            # DUDA, PENSATIVO y NERVIOSO dejan la mirada fuera del centro
+            # (barrida, fija a un lado, o saltando al azar). Al salir de
+            # cualquiera de las tres, la mirada vuelve al centro antes de
+            # empezar la siguiente expresión, en vez de quedarse donde la
+            # dejaron — se suaviza con el mismo EMA que ya usan LR/UD, no es
+            # un salto brusco.
+            if expresion_anterior in ("DUDA", "PENSATIVO", "NERVIOSO"):
+                objetivo_actual[CANAL_LR] = 90.0
+                objetivo_actual[CANAL_UD] = 90.0
+            if emocion_actual == "DUDA":
+                inicio_duda = ahora
+            elif emocion_actual == "NERVIOSO":
+                # Resta el intervalo para que el primer salto sea inmediato,
+                # no que espere 1s desde el cambio de expresión.
+                ultimo_salto_nervioso = time.ticks_add(ahora, -NERVIOSO_SALTO_MS)
             print("Expresión:", emocion_actual)
             proxima_expresion = time.ticks_add(ahora, INTERVALO_EXPRESION_MS)
 

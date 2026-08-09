@@ -38,8 +38,12 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
   cosas: `estado_base.py`, un programa independiente de `main.py` que centra
   los 8 servos a 90° y los mantiene ahí; y en `main.py`, una secuencia de
   expresiones faciales que cicla cada 5 segundos en orden fijo, sin depender de
-  voz ni sentimiento todavía — primer paso, no la versión final. Código
-  completo con tests, falta validar en hardware real.
+  voz ni sentimiento todavía — primer paso, no la versión final. Tras la
+  primera prueba en hardware real se pidieron ajustes de realismo (reposo de
+  párpados menos abierto, SORPRENDIDO/FELIZ/SOSPECHA/DORMIDO recalculados,
+  cabeza gacha en TRISTE, mirada fija/errática en DUDA/PENSATIVO/NERVIOSO en
+  vez de seguir el rastreo). **Completa y validada en hardware real** por el
+  usuario tras esos ajustes: "todo ha funcionado bien". Versión cerrada.
 
 **Regla del proyecto, válida para todas las versiones: ninguna versión importa
 código de otra carpeta de versión.** v2 es una copia de v1 con el añadido de
@@ -362,9 +366,9 @@ reverificadas contra el original antes de usarlas), una cada 5 segundos — sin
 depender de voz ni sentimiento todavía, es el primer paso. Detalles del
 mecanismo:
 
-- Los offsets de párpados se aplican sobre la posición "abierta" fija (v6 no
-  sincroniza párpados con la mirada, a diferencia de `ojosMecanicos/main.py`) y
-  se recortan con `LIMITES_PARPADOS` (min, max por canal, copiado de
+- Los offsets de párpados se aplican sobre `PARPADOS_REPOSO` (una posición de
+  reposo fija, no el 100% abierto — ver el ajuste de realismo más abajo) y se
+  recortan con `LIMITES_PARPADOS` (min, max por canal, copiado de
   `servo_limits`). El offset de `TILT` se suma al que ya calcula
   `actualizar_objetivo_cuello()`; el de `PAN` no se aplica porque en las 10
   emociones originales siempre es 0.
@@ -373,15 +377,38 @@ mecanismo:
 - `parpadear()` no se dispara con `DORMIDO` activo (mismo criterio que el
   original) y, al reabrir, vuelve a `objetivo_actual` (la posición de la
   expresión activa), no siempre a "abierto".
-- **Hallazgo real, confirmado con test, no solo descrito:** antes de escribir
-  el código final se comprobó, para las 10 emociones × 4 canales, si el offset
-  sobre la base abierta se sale del rango mecánico. **SORPRENDIDO clampa en
-  los 4 canales** — su offset empuja hacia "más abierto todavía", pero en v6
-  los párpados ya parten del máximo (sin sincronía con la mirada que los
-  mantenga parcialmente cerrados como en el original), así que la expresión
-  **no se distingue de NEUTRAL**. `DORMIDO` clampa en 2 canales pero sí se
-  distingue (empuja hacia "más cerrado", que tiene margen). Documentado en
-  README-v6.md como limitación real de esta versión, no un bug a arreglar aquí.
+
+**Ajuste de realismo, tras probar Hitos 1-3 en hardware real:** el usuario
+pidió varios cambios para que las expresiones se distingan mejor. El más
+importante — `PARPADOS_REPOSO` — resuelve de raíz un hallazgo real detectado
+antes de esa prueba: con `NEUTRAL` en el 100% abierto, **SORPRENDIDO clampaba
+en los 4 canales** (su offset empuja hacia "más abierto todavía", sin margen
+mecánico) y no se distinguía de `NEUTRAL`. En vez de añadir sincronía
+párpado-mirada (fuera de alcance), se bajó el reposo a un 40% de cierre —
+mínimo con margen cómodo en los 4 canales de SORPRENDIDO (TR es el canal más
+exigente, ~34% mínimo teórico). Efecto colateral esperado: `DORMIDO` (offsets
+sin cambiar) ahora clampa en los 4 canales y cierra los párpados por completo
+(antes solo 2 canales) — coherente con la expresión, no un problema. `FELIZ` y
+`SOSPECHA` se recalcularon en términos absolutos (el offset original de
+`ojosMecanicos`, pensado para una base 100% abierta, casi no se notaba sobre el
+nuevo reposo): FELIZ sube los párpados inferiores un 50% del camino restante
+hacia cerrado; SOSPECHA cierra los 4 canales un 80%. Además, `DUDA` y
+`PENSATIVO` ahora **ignoran el rastreo facial y fijan la mirada** mientras
+duran: DUDA barre `LR` de un extremo a otro (40↔140, 2.5s por tramo, ida y
+vuelta completa en los 5s de la expresión); PENSATIVO fija `LR=40, UD=40`
+(arriba-izquierda; UD bajo es "arriba" en este montaje). `NERVIOSO` usa el
+mismo mecanismo con saltos discretos al azar: cada 1s, `LR`/`UD` saltan a un
+punto al azar en un rango moderado (65–115), como "mirando a cualquier lado
+sin buscar contacto visual" (pedido explícito). El cuello acompaña los tres
+gestos porque sigue leyendo el mismo `objetivo_actual[LR]/[UD]`. Al cambiar de
+expresión, si la que termina era DUDA, PENSATIVO o NERVIOSO, la mirada se
+reinicia al centro — corrige un bug real donde la siguiente expresión heredaba
+la mirada desviada. Además, TRISTE fuerza `TILT` directamente a su mínimo
+mecánico (cabeza gacha) en vez de sumar un offset relativo al TILT del
+seguimiento del cuello — pedido explícito, para que se note siempre igual sin
+depender de hacia dónde esté mirando el rastreo. Detalle completo en
+[`v6/README-v6.md`](v6/README-v6.md), sección "Ajustes de realismo tras probar
+en hardware real".
 
 **El resto de v6 es la base funcional de v5, copiada sin cambios de lógica:**
 `face_tracker.py`, `pico_serial.py`, `diagnostico_canal.py`. Si tocas alguno de
@@ -390,12 +417,17 @@ mano si aplica también ahí. `main_pca9685.py` (la versión retirada con
 PCA9685) **no** se copió a v6 a propósito: no es "base funcional", es código no
 usado, y su historial ya vive en `v5/README-v5.md`.
 
-**Cómo se verificó:** sintaxis de los 6 ficheros, y 35 tests (los heredados de
-v5 + 4 para `estado_base.py` + 6 para la secuencia de expresiones) corriendo
-dentro de `v6/.venv` sin ninguna referencia a `v5/`. **No verificado con la
-Pico física** — no hay una conectada a este entorno. Sin verificar tampoco: la
-interacción entre el temporizador de parpadeo y el de cambio de expresión, que
-son independientes entre sí y podrían coincidir en el tiempo.
+**Cómo se verificó:** sintaxis de los 6 ficheros, y 49 tests (los heredados de
+v5 + 4 para `estado_base.py` + los de la secuencia de expresiones y sus
+ajustes de realismo) corriendo dentro de `v6/.venv` sin ninguna referencia a
+`v5/`. **Completa y validada en hardware real por el usuario:** la base de v5,
+`estado_base.py`, la secuencia de expresiones y los diez ajustes de realismo
+(reposo al 40%, SORPRENDIDO/FELIZ/SOSPECHA/DORMIDO recalculados, barrido de
+DUDA, mirada fija de PENSATIVO, cabeza gacha de TRISTE, saltos al azar de
+NERVIOSO, y el recentrado de mirada al cambiar de expresión) — confirmado:
+"todo ha funcionado bien", incluida la interacción entre el temporizador de
+parpadeo, el de cambio de expresión, y los overrides de mirada, sin problema
+observado. Versión cerrada.
 
 ## Cómo verificar cambios (todas las versiones)
 

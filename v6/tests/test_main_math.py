@@ -22,6 +22,8 @@ Ejecutar:
     python -m pytest tests/test_main_math.py -v
 """
 
+import random
+
 import pytest
 
 # --- Copiado de main.py: conversión de grados a PWM directo (sin PCA9685) ----
@@ -114,19 +116,37 @@ def test_parpados_abiertos_y_cerrados_son_valores_distintos_por_canal():
         )
 
 
+# --- Copiado de main.py: reposo real de los párpados (no 100% abierto) ------
+# Pedido explícito tras probar en hardware real: con los párpados en reposo
+# totalmente abiertos, SORPRENDIDO no tenía margen para distinguirse de
+# NEUTRAL. 40% de cierre da margen cómodo en los 4 canales (TR es el más
+# exigente, con un mínimo de ~34%).
+
+CIERRE_REPOSO = 0.40
+PARPADOS_REPOSO = {
+    canal: PARPADOS_ABIERTOS[canal] + CIERRE_REPOSO * (PARPADOS_CERRADOS[canal] - PARPADOS_ABIERTOS[canal])
+    for canal in PARPADOS_ABIERTOS
+}
+
 # --- Copiado de main.py: offsets de expresión y su aplicación ---------------
 
 LIMITES_PARPADOS = {"TL": (70, 170), "BL": (10, 90), "TR": (10, 70), "BR": (90, 160)}
 
+# FELIZ y SOSPECHA recalculados para v6 (no son los de ojosMecanicos): con el
+# reposo ya al 40% de cierre, los offsets originales (pensados para una base
+# 100% abierta) apenas se notaban. FELIZ ahora sube el párpado inferior un 50%
+# del camino restante hacia CERRADO desde el reposo; SOSPECHA cierra los 4
+# canales un 80% del camino restante hacia CERRADO. El resto son los 10 de
+# ojosMecanicos/main.py, sin cambios.
 OFFSETS_EMOCIONES = {
     "NEUTRAL":     {"TL": 0,    "TR": 0,   "BL": 0,   "BR": 0,   "TILT": 0},
-    "FELIZ":       {"TL": 0,    "TR": 0,   "BL": 30,  "BR": -30, "TILT": 0},
+    "FELIZ":       {"TL": 0,    "TR": 0,   "BL": 24,  "BR": -21, "TILT": 0},
     "ENOJADO":     {"TL": -40,  "TR": 40,  "BL": 0,   "BR": 0,   "TILT": 10},
     "TRISTE":      {"TL": -30,  "TR": 30,  "BL": 20,  "BR": -20, "TILT": -20},
     "SORPRENDIDO": {"TL": 20,   "TR": -20, "BL": -10, "BR": 10,  "TILT": -10},
     "DORMIDO":     {"TL": -100, "TR": 100, "BL": 80,  "BR": -80, "TILT": -30},
     "DUDA":        {"TL": -50,  "TR": 0,   "BL": 0,   "BR": 0,   "TILT": 10},
-    "SOSPECHA":    {"TL": -40,  "TR": 40,  "BL": 40,  "BR": -40, "TILT": 0},
+    "SOSPECHA":    {"TL": -48,  "TR": 29,  "BL": 38,  "BR": -34, "TILT": 0},
     "PENSATIVO":   {"TL": 0,    "TR": 0,   "BL": 10,  "BR": -10, "TILT": 15},
     "NERVIOSO":    {"TL": 0,    "TR": 0,   "BL": 0,   "BR": 0,   "TILT": -5},
 }
@@ -140,7 +160,7 @@ def objetivo_parpados_para(emocion):
     todo lo demás (sin tocar TILT ni depender de objetivo_actual del firmware)."""
     offsets = OFFSETS_EMOCIONES[emocion]
     return {
-        canal: clamp(PARPADOS_ABIERTOS[canal] + offsets[canal], *LIMITES_PARPADOS[canal])
+        canal: clamp(PARPADOS_REPOSO[canal] + offsets[canal], *LIMITES_PARPADOS[canal])
         for canal in ("TL", "BL", "TR", "BR")
     }
 
@@ -150,8 +170,15 @@ def test_todas_las_emociones_de_la_secuencia_tienen_offsets_definidos():
         assert emocion in OFFSETS_EMOCIONES
 
 
-def test_neutral_no_mueve_los_parpados_respecto_a_abierto():
-    assert objetivo_parpados_para("NEUTRAL") == PARPADOS_ABIERTOS
+def test_reposo_esta_mas_cerrado_que_el_extremo_totalmente_abierto():
+    # El hallazgo original (SORPRENDIDO indistinguible de NEUTRAL) dependía de
+    # que el reposo fuera el 100% abierto. Confirma que ya no lo es.
+    assert PARPADOS_REPOSO != PARPADOS_ABIERTOS
+    assert PARPADOS_REPOSO == {"TL": 130, "BL": 42, "TR": 34, "BR": 132}
+
+
+def test_neutral_no_mueve_los_parpados_respecto_al_reposo():
+    assert objetivo_parpados_para("NEUTRAL") == PARPADOS_REPOSO
 
 
 def test_ninguna_emocion_saca_los_parpados_de_su_rango_mecanico():
@@ -162,26 +189,172 @@ def test_ninguna_emocion_saca_los_parpados_de_su_rango_mecanico():
             assert minimo <= valor <= maximo, f"{emocion}/{canal}: {valor} fuera de ({minimo},{maximo})"
 
 
-def test_sorprendido_no_se_distingue_de_neutral_en_v6():
-    # Hallazgo real, no un bug: SORPRENDIDO empuja los 4 párpados hacia "más
-    # abiertos todavía", pero en v6 ya parten del máximo (no hay sincronía con la
-    # mirada que los abra menos, a diferencia del original). Los 4 canales
-    # clampan de vuelta al valor de PARPADOS_ABIERTOS — la expresión no se ve.
-    # Documentado en README-v6.md, sección de limitaciones.
-    assert objetivo_parpados_para("SORPRENDIDO") == PARPADOS_ABIERTOS
+def test_sorprendido_ahora_si_se_distingue_de_neutral_en_v6():
+    # Antes (reposo 100% abierto) los 4 canales clampaban de vuelta al mismo
+    # valor que NEUTRAL — no se veía. Con el reposo al 40% de cierre, los 4
+    # canales tienen margen y el offset se aplica sin clamping.
+    objetivo = objetivo_parpados_para("SORPRENDIDO")
+    assert objetivo != PARPADOS_REPOSO
+    offsets = OFFSETS_EMOCIONES["SORPRENDIDO"]
+    for canal in ("TL", "BL", "TR", "BR"):
+        assert objetivo[canal] == PARPADOS_REPOSO[canal] + offsets[canal], (
+            f"{canal}: se esperaba el offset sin clamping"
+        )
 
 
-def test_dormido_si_se_distingue_cierra_parcialmente_los_parpados():
-    # A diferencia de SORPRENDIDO, DORMIDO empuja hacia "más cerrado", que sí
-    # tiene margen desde la base abierta — la expresión sí debería verse.
-    objetivo = objetivo_parpados_para("DORMIDO")
-    assert objetivo != PARPADOS_ABIERTOS
-    # TL llega justo al límite de cerrado (70); BL casi al suyo (90).
-    assert objetivo["TL"] == 70
-    assert objetivo["BL"] == 90
+def test_dormido_cierra_los_4_canales_por_completo():
+    # Con el reposo más cerrado, el offset de DORMIDO ahora clampa en los 4
+    # canales (antes solo en 2) — los párpados llegan a CERRADO por completo,
+    # coherente con la expresión de "dormido".
+    assert objetivo_parpados_para("DORMIDO") == PARPADOS_CERRADOS
 
 
 def test_feliz_sube_el_parpado_inferior_izquierdo_y_baja_el_derecho():
     objetivo = objetivo_parpados_para("FELIZ")
-    assert objetivo["BL"] > PARPADOS_ABIERTOS["BL"]
-    assert objetivo["BR"] < PARPADOS_ABIERTOS["BR"]
+    assert objetivo["BL"] > PARPADOS_REPOSO["BL"]
+    assert objetivo["BR"] < PARPADOS_REPOSO["BR"]
+    # Superiores sin cambio: la expresión "se queda en posición neutral abierta".
+    assert objetivo["TL"] == PARPADOS_REPOSO["TL"]
+    assert objetivo["TR"] == PARPADOS_REPOSO["TR"]
+
+
+def test_sospecha_cierra_los_4_canales_bastante_mas_que_neutral():
+    objetivo = objetivo_parpados_para("SOSPECHA")
+    neutral = objetivo_parpados_para("NEUTRAL")
+    for canal in ("TL", "BL", "TR", "BR"):
+        distancia_a_cerrado_reposo = abs(PARPADOS_CERRADOS[canal] - PARPADOS_REPOSO[canal])
+        distancia_a_cerrado_sospecha = abs(PARPADOS_CERRADOS[canal] - objetivo[canal])
+        # SOSPECHA debe estar bastante más cerca de CERRADO que NEUTRAL.
+        assert distancia_a_cerrado_sospecha < distancia_a_cerrado_reposo * 0.3
+        assert objetivo[canal] != neutral[canal]
+
+
+# --- Copiado de main.py: barrido de ojos en DUDA -----------------------------
+
+LR_MIN, LR_MAX = 40, 140
+DUDA_TRAMO_MS = 2500
+
+
+def lr_objetivo_duda(transcurrido_ms):
+    """Misma lógica que actualizar_objetivo_mirada_expresion() en main.py para
+    DUDA, aislada como función pura de "tiempo transcurrido desde que empezó
+    DUDA" en vez de leer relojes reales."""
+    transcurrido = transcurrido_ms % (DUDA_TRAMO_MS * 2)
+    if transcurrido < DUDA_TRAMO_MS:
+        progreso = transcurrido / DUDA_TRAMO_MS
+        return LR_MIN + progreso * (LR_MAX - LR_MIN)
+    else:
+        progreso = (transcurrido - DUDA_TRAMO_MS) / DUDA_TRAMO_MS
+        return LR_MAX - progreso * (LR_MAX - LR_MIN)
+
+
+def test_duda_barre_de_un_extremo_al_otro_y_vuelve_en_5_segundos():
+    assert lr_objetivo_duda(0) == pytest.approx(LR_MIN)
+    assert lr_objetivo_duda(1250) == pytest.approx(90)
+    assert lr_objetivo_duda(2500) == pytest.approx(LR_MAX)
+    assert lr_objetivo_duda(3750) == pytest.approx(90)
+    assert lr_objetivo_duda(5000) == pytest.approx(LR_MIN)  # vuelve al inicio
+
+
+def test_duda_nunca_sale_del_rango_de_lr():
+    for t in range(0, 5000, 100):
+        assert LR_MIN <= lr_objetivo_duda(t) <= LR_MAX
+
+
+# --- Copiado de main.py: mirada fija en PENSATIVO ----------------------------
+
+PENSATIVO_LR, PENSATIVO_UD = 40, 40
+
+
+def test_pensativo_fija_la_mirada_arriba_a_la_izquierda():
+    # LR=40 es el extremo izquierdo; UD=40 es "arriba" en este montaje (mismo
+    # criterio que "Mirar hacia arriba" en ojosMecanicos/main.py, que usa
+    # valores bajos de UD).
+    assert PENSATIVO_LR == LR_MIN
+    assert PENSATIVO_UD == 40
+
+
+# --- Copiado de main.py: recentrado de la mirada al salir de DUDA/PENSATIVO --
+
+def objetivo_mirada_al_cambiar_de_expresion(expresion_anterior, lr_previo, ud_previo):
+    """Misma lógica que el bloque de cambio de expresión en main.py: si la
+    expresión que termina fijaba la mirada a un lado (DUDA, PENSATIVO,
+    NERVIOSO), vuelve al centro antes de empezar la siguiente; si no, no toca
+    nada."""
+    if expresion_anterior in ("DUDA", "PENSATIVO", "NERVIOSO"):
+        return 90.0, 90.0
+    return lr_previo, ud_previo
+
+
+def test_la_mirada_vuelve_al_centro_al_salir_de_duda():
+    assert objetivo_mirada_al_cambiar_de_expresion("DUDA", 140, 90) == (90.0, 90.0)
+
+
+def test_la_mirada_vuelve_al_centro_al_salir_de_pensativo():
+    assert objetivo_mirada_al_cambiar_de_expresion("PENSATIVO", 40, 40) == (90.0, 90.0)
+
+
+def test_la_mirada_no_se_toca_al_salir_de_expresiones_sin_override():
+    # El resto de expresiones no fijan la mirada, así que el rastreo facial
+    # (lo que sea que haya en LR/UD en ese momento) no debe alterarse.
+    assert objetivo_mirada_al_cambiar_de_expresion("FELIZ", 120, 75) == (120, 75)
+
+
+# --- Copiado de main.py: TRISTE fuerza la cabeza al mínimo mecánico ----------
+
+TILT_MIN_MEC, TILT_MAX_MEC = 40, 140
+
+
+def tilt_objetivo_para(emocion, tilt_de_cuello):
+    """Misma lógica que la rama TRISTE de actualizar_objetivo_expresion(): para
+    TRISTE, ignora el TILT que calculó el seguimiento del cuello y fuerza el
+    mínimo; para el resto, suma el offset normal y recorta."""
+    offset_tilt = OFFSETS_EMOCIONES[emocion]["TILT"]
+    if emocion == "TRISTE":
+        return TILT_MIN_MEC
+    return clamp(tilt_de_cuello + offset_tilt, TILT_MIN_MEC, TILT_MAX_MEC)
+
+
+def test_triste_fuerza_la_cabeza_al_minimo_sin_importar_el_seguimiento():
+    for tilt_de_cuello in (40, 90, 140):
+        assert tilt_objetivo_para("TRISTE", tilt_de_cuello) == TILT_MIN_MEC
+
+
+def test_otras_emociones_siguen_usando_el_offset_relativo_de_tilt():
+    # NEUTRAL no mueve el TILT del cuello (offset 0).
+    assert tilt_objetivo_para("NEUTRAL", 90) == 90
+
+
+# --- Copiado de main.py: saltos de mirada al azar en NERVIOSO ---------------
+
+NERVIOSO_SALTO_MS = 1000
+NERVIOSO_LR_MIN, NERVIOSO_LR_MAX = 65, 115
+NERVIOSO_UD_MIN, NERVIOSO_UD_MAX = 65, 115
+
+
+def hay_que_saltar_nervioso(transcurrido_desde_ultimo_salto_ms):
+    """Misma condición que la rama NERVIOSO de
+    actualizar_objetivo_mirada_expresion(): ¿ya pasó el intervalo de salto?"""
+    return transcurrido_desde_ultimo_salto_ms >= NERVIOSO_SALTO_MS
+
+
+def test_nervioso_no_salta_antes_de_tiempo():
+    assert hay_que_saltar_nervioso(999) is False
+
+
+def test_nervioso_salta_al_cumplirse_el_intervalo():
+    assert hay_que_saltar_nervioso(1000) is True
+    assert hay_que_saltar_nervioso(1500) is True
+
+
+def test_nervioso_salta_dentro_de_un_rango_moderado_no_los_extremos_mecanicos():
+    for _ in range(50):
+        lr = random.randint(NERVIOSO_LR_MIN, NERVIOSO_LR_MAX)
+        ud = random.randint(NERVIOSO_UD_MIN, NERVIOSO_UD_MAX)
+        assert LR_MIN < lr < LR_MAX
+        assert NERVIOSO_LR_MIN <= lr <= NERVIOSO_LR_MAX
+        assert NERVIOSO_UD_MIN <= ud <= NERVIOSO_UD_MAX
+
+
+def test_la_mirada_tambien_vuelve_al_centro_al_salir_de_nervioso():
+    assert objetivo_mirada_al_cambiar_de_expresion("NERVIOSO", 70, 110) == (90.0, 90.0)
