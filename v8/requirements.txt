@@ -1,0 +1,15 @@
+# v8 — Voz en tiempo real + análisis de emociones (de v1/v2) + expresión
+# facial de la Pico dirigida por esa emoción. Autónomo: no depende de v1-v7.
+
+# Dependencias de v1/v2 (sin cambios)
+websockets>=13.0
+sounddevice>=0.4.7
+numpy>=1.26
+python-dotenv>=1.0
+certifi>=2024.2.2
+
+# De v2 (análisis de emociones): trae transformers y torch como dependencias.
+pysentimiento>=0.7.0
+
+# Nueva en v8: enlace serial hacia la Pico (pico_serial.py, copia de v7/v6/v3).
+pyserial>=3.5

@@ -13,7 +13,10 @@ de expresiones cada 5s, con ajustes de realismo tras la primera prueba —
 reposo de párpados, SORPRENDIDO/FELIZ/SOSPECHA/DORMIDO recalculados, cabeza
 gacha en TRISTE, mirada fija/errática en DUDA/PENSATIVO/NERVIOSO) · v7
 completa y validada en hardware real (misma base de v6, junta el rastreo
-facial real con la secuencia de expresiones activa).
+facial real con la secuencia de expresiones activa) · v8 completa y validada
+en conversación real (junta voz + sentimiento de v1/v2 con el firmware de
+v6/v7: la emoción detectada en la conversación controla la expresión facial;
+voz en el navegador por WebRTC, todavía sin rastreo facial — eso es v9).
 
 ## 📦 Versiones disponibles
 
@@ -191,6 +194,40 @@ python face_tracker.py            # rastreo real + envío a la Pico, si hay una
 
 Ver [`v7/README-v7.md`](v7/README-v7.md) y [`v7/PLAN-v7.md`](v7/PLAN-v7.md).
 
+### [v8](v8/) — Voz + sentimiento controlando la expresión facial ✅ (completa y validada en conversación real)
+**Estado:** Junta v1/v2 (conversación de voz + análisis de sentimiento) con
+v6/v7 (firmware de la Pico + expresiones). Cambio de fondo en `main.py`: ya no
+cicla sola las 10 expresiones cada 5s — la expresión cambia al recibir un
+`EMOCION` válido por serial, se mantiene 5 segundos (pulso) y vuelve sola a
+NEUTRAL si no llega una nueva. La emoción detectada (7 categorías de
+`pysentimiento`, ninguna sin mapear) se traduce al vocabulario de la Pico y
+se envía por serial si hay una conectada (autodetectada, `--no-pico` para
+desactivarlo).
+
+**Dos formas de hablar:** `webrtc_server.py` (recomendado, nuevo en v8) abre
+la conversación en el navegador por WebRTC — cancelación de eco real,
+interrupción natural hablando encima, sin el lag ni los paliativos de la
+terminal. Como con WebRTC la transcripción va directo entre el navegador y
+OpenAI, el navegador manda el texto de cada frase a un endpoint nuevo
+(`POST /api/analyze-sentiment`) que hace el análisis y avisa a la Pico.
+`realtime_voice.py` (terminal, heredado de v2) se mantiene como alternativa.
+
+**Todavía sin rastreo facial, a propósito** — LR/UD van fijos a 90,90; eso es
+lo siguiente (v9), pedido explícitamente para después de validar esta
+integración. **Confirmado por el usuario con una conversación real** (clave
+de API válida, hablando de verdad por el navegador, con la Pico física): "ha
+funcionado muy bien y el robot también ha seguido todos los sentimientos".
+
+```bash
+cd v8 && source .venv/bin/activate
+python -m pytest tests/ -v        # 65 tests
+python webrtc_server.py --sentiment    # recomendado: voz en el navegador + Pico
+# o
+python realtime_voice.py --sentiment   # alternativa: terminal + Pico
+```
+
+Ver [`v8/README-v8.md`](v8/README-v8.md) y [`v8/PLAN-v8.md`](v8/PLAN-v8.md).
+
 ## 📚 Documentación
 
 - [CLAUDE.md](CLAUDE.md) — contexto técnico completo del proyecto (para trabajar en el código)
@@ -202,40 +239,42 @@ Ver [`v7/README-v7.md`](v7/README-v7.md) y [`v7/PLAN-v7.md`](v7/PLAN-v7.md).
 - [v5/README-v5.md](v5/README-v5.md) · [v5/PLAN-v5.md](v5/PLAN-v5.md) — incluye la cronología completa de depuración
 - [v6/README-v6.md](v6/README-v6.md) · [v6/PLAN-v6.md](v6/PLAN-v6.md)
 - [v7/README-v7.md](v7/README-v7.md) · [v7/PLAN-v7.md](v7/PLAN-v7.md)
+- [v8/README-v8.md](v8/README-v8.md) · [v8/PLAN-v8.md](v8/PLAN-v8.md)
 - [docs/RASPBERRY-PI.md](docs/RASPBERRY-PI.md) — especificación para Pi 5, aparcada
 
 ## 🔧 Requisitos
 
 - Python 3.9+
 - Clave de API de OpenAI con acceso a la Realtime API
-- Micrófono y altavoces (v1/v2) — cámara adicional para v3/v4/v5/v6/v7
-- v2 y v3 instalan `pysentimiento` (torch + transformers): ~2GB, varios minutos la
-  primera vez. **v4, v5, v6 y v7 no** — son mucho más ligeros (solo `opencv-python` +
-  `pyserial`), porque no tocan voz ni sentimiento
-- `main.py`/`estado_base.py` de v4/v5/v6/v7 son firmware MicroPython: necesitan la
-  Raspberry Pi Pico física; el resto (rastreo facial) es Python normal de Mac
+- Micrófono y altavoces (v1/v2/v8) — cámara adicional para v3/v4/v5/v6/v7
+  (v8 todavía no usa cámara, a propósito — ver v8/README-v8.md)
+- v2, v3 y v8 instalan `pysentimiento` (torch + transformers): ~2GB, varios
+  minutos la primera vez. **v4, v5, v6 y v7 no** — son mucho más ligeros (solo
+  `opencv-python` + `pyserial`), porque no tocan voz ni sentimiento
+- `main.py`/`estado_base.py` de v4/v5/v6/v7/v8 son firmware MicroPython:
+  necesitan la Raspberry Pi Pico física; el resto es Python normal de Mac
 
 ## 📋 Comparativa de versiones
 
-| | v1 | v2 | v3 | v4 | v5 | v6 | v7 |
-|---|---|---|---|---|---|---|---|
-| Dónde corre | Mac | Mac | Mac | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** |
-| Voz en tiempo real | ✅ | ✅ (hereda de v1) | ✅ (hereda de v2) | — (a propósito) | — (a propósito) | — (a propósito) | — (a propósito) |
-| Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 | n/a | n/a | n/a | n/a |
-| Análisis de emociones | — | ✅ `pysentimiento`, en consola | ✅ (hereda de v2) | — | — | — | — |
-| Rastreo facial (ojos) | — | — | 🔄 falta cámara real | ✅ validado en real | ✅ (hereda de v4) | ✅ (hereda de v5) | ✅ (hereda de v6) |
-| Cuello (PAN/TILT) | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) |
-| Parpadeo | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) |
-| Utilidad de estado base | — | — | — | — | — | ✅ validada en real | ✅ (hereda de v6) |
-| Expresiones faciales | — | — | — | — | — | ✅ secuencia + ajustes de realismo, validados en real | ✅ (hereda de v6) |
-| Rastreo real + expresiones a la vez | — | — | — | — | — | — | ✅ validado en real |
-| Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada |
+| | v1 | v2 | v3 | v4 | v5 | v6 | v7 | v8 |
+|---|---|---|---|---|---|---|---|---|
+| Dónde corre | Mac | Mac | Mac | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** |
+| Voz en tiempo real | ✅ | ✅ (hereda de v1) | ✅ (hereda de v2) | — (a propósito) | — (a propósito) | — (a propósito) | — (a propósito) | ✅ (hereda de v2) |
+| Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 | n/a | n/a | n/a | n/a | igual que v1 |
+| Análisis de emociones | — | ✅ `pysentimiento`, en consola | ✅ (hereda de v2) | — | — | — | — | ✅ (hereda de v2) |
+| Rastreo facial (ojos) | — | — | 🔄 falta cámara real | ✅ validado en real | ✅ (hereda de v4) | ✅ (hereda de v5) | ✅ (hereda de v6) | — (a propósito, ver v9) |
+| Cuello (PAN/TILT) | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) | ✅ (hereda de v6/v7) |
+| Parpadeo | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) | ✅ (hereda de v6/v7) |
+| Utilidad de estado base | — | — | — | — | — | ✅ validada en real | ✅ (hereda de v6) | ✅ (hereda de v6/v7) |
+| Expresiones faciales | — | — | — | — | — | ✅ secuencia fija, validada en real | ✅ (hereda de v6) | ✅ dirigidas por sentimiento (pulso 5s) |
+| Rastreo real + expresiones a la vez | — | — | — | — | — | — | ✅ validado en real | n/a (sin rastreo aún) |
+| Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada |
 
 **Nota sobre independencia:** cada carpeta de versión tiene sus propias copias de
 cualquier código que reutilice de otra (nunca lo importa con una ruta cruzada). Por
-eso `face_tracker.py` y `pico_serial.py` existen, idénticos, en `v3/`, `v4/`, `v5/`,
-`v6/` y `v7/`. Puedes borrar cualquier carpeta de versión anterior y las demás
-siguen funcionando.
+eso `pico_serial.py` existe, idéntico, en `v3/` a `v8/`, y `face_tracker.py` en
+`v3/` a `v7/` (v8 no lo incluye: no rastrea el rostro todavía, a propósito). Puedes
+borrar cualquier carpeta de versión anterior y las demás siguen funcionando.
 
 ## 📖 Estructura del proyecto
 
@@ -294,6 +333,18 @@ siguen funcionando.
 │   ├── tests/              # 49 tests (heredados de v6, sin cambios)
 │   ├── README-v7.md
 │   └── PLAN-v7.md
+├── v8/                     # Voz + sentimiento controlando la expresión facial
+│   ├── main.py             # v7 + expresión dirigida por EMOCION (pulso 5s)
+│   ├── webrtc_server.py    # Copia de v1 + endpoint /api/analyze-sentiment (recomendado)
+│   ├── static/index.html   # Copia de v1 + envío de transcripción a ese endpoint
+│   ├── realtime_voice.py   # Copia de v2 + envío de la emoción a la Pico (alternativa)
+│   ├── sentiment_analyzer.py # Copia autónoma de v2, sin cambios
+│   ├── pico_serial.py      # Copia autónoma de v7, sin cambios
+│   ├── estado_base.py      # Copia autónoma de v7, sin cambios
+│   ├── diagnostico_canal.py # Copia autónoma de v7, sin cambios
+│   ├── tests/              # 65 tests
+│   ├── README-v8.md
+│   └── PLAN-v8.md
 ├── docs/
 │   └── RASPBERRY-PI.md     # Especificación técnica, aparcada
 ├── CLAUDE.md               # Contexto técnico completo del proyecto
@@ -303,7 +354,7 @@ siguen funcionando.
 
 Cada versión es independiente: su propio venv, requirements y documentación, y sus
 propias copias de cualquier código reutilizado de otra versión (nunca imports entre
-carpetas). v1 no cambia mientras se trabaja en v2, v3, v4, v5, v6 o v7, y puedes
+carpetas). v1 no cambia mientras se trabaja en v2, v3, v4, v5, v6, v7 o v8, y puedes
 borrar cualquier versión anterior sin romper las demás.
 
 ## ❓ FAQ

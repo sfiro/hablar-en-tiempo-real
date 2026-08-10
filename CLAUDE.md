@@ -1,10 +1,10 @@
 # CLAUDE.md
 
 Guía de todo el proyecto para trabajar en este repositorio. Cada versión (`v1/`, `v2/`,
-`v3/`, `v4/`, `v5/`, `v6/`, `v7/`) tiene su propia documentación detallada; este
-fichero es el mapa general y recoge los hechos que cruzan versiones. Empieza aquí,
-salta al `CLAUDE-vN.md` o `README-vN.md` de la versión concreta cuando necesites el
-detalle de implementación.
+`v3/`, `v4/`, `v5/`, `v6/`, `v7/`, `v8/`) tiene su propia documentación detallada;
+este fichero es el mapa general y recoge los hechos que cruzan versiones. Empieza
+aquí, salta al `CLAUDE-vN.md` o `README-vN.md` de la versión concreta cuando
+necesites el detalle de implementación.
 
 ## Qué es el proyecto
 
@@ -52,26 +52,48 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
   ignoran a propósito, como ya estaban construidas desde v6. **Completa y
   validada en hardware real** por el usuario, con cámara y Pico funcionando a
   la vez: "funcionó perfecto". Versión cerrada.
+- **v8** — junta v1/v2 (voz en tiempo real + análisis de sentimiento) con v6/v7
+  (firmware de la Pico + expresiones): la emoción detectada en cada frase de la
+  conversación controla ahora la expresión facial del robot. Cambio de fondo en
+  `main.py`: ya no cicla sola las 10 expresiones cada 5s — la expresión cambia
+  al recibir un `EMOCION` válido por serial, se mantiene 5s (pulso) y vuelve
+  sola a NEUTRAL si no llega una nueva. Mapeo pysentimiento→Pico ampliado
+  respecto a v3, a pedido explícito: cubre las 7 categorías, ninguna sin
+  enviar (antes 5). Dos formas de hablar del lado del Mac: `webrtc_server.py`
+  (nuevo, recomendado — voz en el navegador por WebRTC, cancelación de eco
+  real, sin el lag ni los paliativos de la terminal; a Python solo le llega
+  el texto transcrito, para sentimiento y Pico) y `realtime_voice.py` (v2,
+  terminal, se mantiene como alternativa). **Todavía sin rastreo facial** — a
+  propósito, pedido explícito del usuario para después (v9). **Completa y
+  validada con una conversación real** por el usuario, hablando de verdad por
+  el navegador con la Pico física: "ha funcionado muy bien y el robot también
+  ha seguido todos los sentimientos". 65 tests. Versión cerrada.
 
 **Regla del proyecto, válida para todas las versiones: ninguna versión importa
 código de otra carpeta de versión.** v2 es una copia de v1 con el añadido de
 sentimiento, no un import de v1. v4, v5, v6 y v7 tienen sus propias copias de
 `face_tracker.py` y `pico_serial.py` (idénticas entre sí, y con v3), no las importan
-con una ruta relativa cruzada. Esto es deliberado y se pidió explícitamente:
-**cada versión debe poder ejecutarse borrando todas las demás carpetas de
-versión.** Si añades una versión nueva que reutiliza algo de otra, copia el
-fichero, no lo importes. Excepción deliberada: `v5/main_pca9685.py` (la versión
-retirada del firmware) no se copió a v6 ni v7, porque no es "base funcional" —
-es código explícitamente no usado, y su historial ya vive en `v5/README-v5.md`.
+con una ruta relativa cruzada. v8 sigue el mismo patrón para lo que sí reutiliza
+(`pico_serial.py` de v7, `realtime_voice.py`/`sentiment_analyzer.py` de v2), pero
+**no** copia `face_tracker.py`: v8 no rastrea el rostro todavía, a propósito (ver
+sección de v8), así que ese fichero simplemente no aplica en esta versión —
+ausencia deliberada, no un descuido. Esto es deliberado y se pidió
+explícitamente: **cada versión debe poder ejecutarse borrando todas las demás
+carpetas de versión.** Si añades una versión nueva que reutiliza algo de otra,
+copia el fichero, no lo importes. Excepción deliberada: `v5/main_pca9685.py` (la
+versión retirada del firmware) no se copió a v6 ni v7, porque no es "base
+funcional" — es código explícitamente no usado, y su historial ya vive en
+`v5/README-v5.md`.
 
-Cada carpeta de versión de Mac (v1/v2/v3, y la parte Mac de v4/v5/v6/v7) tiene su
-propio `.venv/`, `requirements.txt` y `.env`.
+Cada carpeta de versión de Mac (v1/v2/v3, y la parte Mac de v4/v5/v6/v7/v8) tiene
+su propio `.venv/`, `requirements.txt` y `.env`.
 
-**Las piezas que rompen el patrón de venv son `main.py` (v4/v5/v6/v7) y
-`estado_base.py` (v6/v7):** no tienen entorno porque no son Python que corra en el
-Mac — son firmware MicroPython que se copia a la Pico (con Thonny o `mpremote`) y
-se ejecuta ahí. El resto de v4/v5/v6/v7 (`face_tracker.py`, `pico_serial.py`, sus
-tests) sí sigue el patrón normal de venv, igual que v1/v2/v3.
+**Las piezas que rompen el patrón de venv son `main.py` (v4/v5/v6/v7/v8) y
+`estado_base.py` (v6/v7/v8):** no tienen entorno porque no son Python que corra
+en el Mac — son firmware MicroPython que se copia a la Pico (con Thonny o
+`mpremote`) y se ejecuta ahí. El resto de v4/v5/v6/v7/v8 (`pico_serial.py` y, en
+v4-v7, `face_tracker.py`; sus tests) sí sigue el patrón normal de venv, igual
+que v1/v2/v3.
 
 ## Entorno, por versión
 
@@ -242,6 +264,10 @@ solo que los hilos arrancan sin excepción.
 | surprise | SORPRENDIDO | directo |
 | disgust | NEUTRAL | no hay equivalente; se degrada en vez de inventar uno |
 | others | NEUTRAL | directo |
+
+**Nota:** esta es la tabla tal como se documentó en v3 (nunca llegó a
+enviarse de verdad a una Pico en esa versión). v8, que sí la usa en vivo,
+revisó la fila de `disgust` — ver la sección de v8 más abajo.
 
 ## v4 — Rastreo facial + servos, simplificado y autónomo
 
@@ -476,6 +502,85 @@ de v6 (sin cambios, porque la matemática no cambió) corriendo dentro de
 `v7/.venv` sin ninguna referencia a `v6/`. **Completa y validada en hardware
 real por el usuario:** con cámara y Pico funcionando a la vez y la secuencia
 de expresiones activa — "funcionó perfecto". Versión cerrada.
+
+## v8 — Voz + sentimiento controlando la expresión facial
+
+Junta lo construido en v1/v2 (voz en tiempo real + análisis de sentimiento)
+con lo construido en v6/v7 (firmware de la Pico + expresiones): la emoción
+detectada en la conversación controla ahora la expresión facial. Pedido
+explícito del usuario, con un alcance acotado a propósito: **todavía sin
+rastreo facial** — eso queda para v9, después de validar que voz + sentimiento
++ expresión funcionan bien juntos.
+
+**Del lado del Mac** ([`v8/realtime_voice.py`](v8/realtime_voice.py),
+[`v8/sentiment_analyzer.py`](v8/sentiment_analyzer.py)): copias de v2, sin
+cambios de lógica en la conversación de voz ni en el análisis de sentimiento.
+Lo nuevo: con `--sentiment` y una Pico conectada (autodetectada, igual patrón
+que `face_tracker.py` en versiones anteriores), cada emoción por encima de
+`--confidence-threshold` se traduce con `EMOTION_TO_PICO` y se envía por
+serial. Pedido explícito del usuario: **las 7 categorías de pysentimiento
+mapean a alguna de las 10 expresiones del robot, ninguna se queda sin
+enviar.** Las 5 de siempre (joy→FELIZ, sadness→TRISTE, anger→ENOJADO,
+fear→NERVIOSO, surprise→SORPRENDIDO) más dos revisadas respecto a v3:
+`disgust`→`SOSPECHA` (no `NEUTRAL` como en la tabla de v3 — se degrada a la
+expresión más parecida facialmente, párpados entrecerrados y mirada de
+rechazo, mismo criterio que fear→NERVIOSO) y `others`→`NEUTRAL` (corresponde
+1 a 1). `DORMIDO`/`DUDA`/`PENSATIVO` se quedan sin usar: no hay categoría de
+pysentimiento que les corresponda ni de lejos, y forzar una sería inventar
+precisión que no existe — para que aparezcan haría falta otro mecanismo
+(p. ej. function-calling del propio modelo de voz, como hacía `ojosMecanicos`
+— ver `model.md`). Efecto colateral aceptado de que `others` ahora sí envíe
+`NEUTRAL`: una frase neutra puede cortar antes de tiempo el pulso de una
+expresión real en curso (antes no pasaba). Nueva opción `--no-pico` para
+probar sentimiento sin tocar la Pico.
+
+**Segundo cambio, pedido tras probar `realtime_voice.py`:** el usuario sintió
+que la conversación por terminal (medio-dúplex, interrumpir con Enter) no daba
+la conversación instantánea que quería, y pidió lo que v1 ya resuelve para
+ese mismo problema — que la voz viva en el navegador. Nuevo
+[`v8/webrtc_server.py`](v8/webrtc_server.py) + [`v8/static/index.html`](v8/static/index.html),
+copiados de v1 sin cambios en la negociación SDP/WebRTC en sí, más un
+endpoint nuevo, `POST /api/analyze-sentiment`: con WebRTC, el audio y la
+transcripción van directo entre el navegador y OpenAI por el canal de datos
+`oai-events`, así que `webrtc_server.py` nunca ve ni un byte de la
+conversación — el navegador manda el texto de cada frase completa a ese
+endpoint, que hace el mismo análisis y envío a la Pico que `realtime_voice.py`.
+`EMOTION_TO_PICO` está duplicado a propósito en los dos ficheros (mismo
+criterio de "copiar, no importar" que entre carpetas de versión, aplicado
+aquí dentro de la misma carpeta); `tests/test_webrtc_server.py` comprueba que
+no diverjan. `realtime_voice.py` se mantiene sin cambios de comportamiento,
+como alternativa para probar sin navegador.
+
+**Del lado de la Pico** ([`v8/main.py`](v8/main.py)): **este es el cambio de
+fondo de la versión.** En v6/v7, la expresión cambiaba sola cada 5s, cicladas
+en un orden fijo. En v8, un modelo dirigido por eventos la reemplaza: al
+recibir `"LR,UD,EMOCION\n"` con un EMOCION válido (antes se aceptaba ese campo
+pero se ignoraba, desde v3), la Pico adopta esa expresión y la mantiene
+`INTERVALO_EXPRESION_MS` (5000ms, el mismo valor de antes, reusado como
+duración del pulso); si no llega una nueva a tiempo, vuelve sola a NEUTRAL.
+Una nueva función, `cambiar_emocion()`, centraliza el cambio de expresión
+(antes vivía solo en el bloque del ciclo fijo) y la reutilizan tanto
+`procesar_comando()` como la expiración del pulso — conserva sin cambios el
+recentrado de mirada al salir de DUDA/PENSATIVO/NERVIOSO y el reinicio de sus
+temporizadores al entrar, ya construidos en v6/v7.
+
+**Por qué no hay `face_tracker.py` en v8:** ausencia deliberada, no un
+descuido — LR/UD se mandan fijos a 90,90 junto con cada EMOCION, porque esta
+versión no tiene cámara conectada. El rastreo real es v9.
+
+**Cómo se verificó:** sintaxis de los 7 ficheros, y 65 tests (heredados de v2
+y v7 sin cambios, más `test_main_math.py` reescrito para el mecanismo de
+pulso y `test_webrtc_server.py` nuevo, que compara el `EMOTION_TO_PICO` de
+los dos ficheros del Mac) corriendo dentro de `v8/.venv` sin ninguna
+referencia a `v2/` ni `v7/`. Antes de la conversación real: `realtime_voice.py
+--sentiment` con una clave de API inválida a propósito confirmó entorno, TLS
+y conexión a la Pico; `webrtc_server.py --sentiment --no-browser` confirmó
+que el endpoint nuevo clasifica y envía a la Pico bien, sin necesitar
+siquiera una clave de API. **Completa y validada con una conversación real
+por el usuario:** clave de API válida, hablando de verdad por el navegador,
+con la Pico física — las 6 frases de prueba (una por emoción no neutral,
+ver `v8/README-v8.md`) movieron la expresión correcta: "ha funcionado muy
+bien y el robot también ha seguido todos los sentimientos". Versión cerrada.
 
 ## Cómo verificar cambios (todas las versiones)
 

@@ -270,6 +270,65 @@ documentar con claridad qué expresiones siguen el rostro y cuáles no.
 
 ---
 
+## v8.0.0 ✅ — Voz + sentimiento controlando la expresión facial (completa y validada en conversación real)
+
+**Objetivo:** juntar v1/v2 (voz en tiempo real + análisis de sentimiento) con
+v6/v7 (firmware de la Pico + expresiones): la emoción detectada en cada frase
+de la conversación controla la expresión facial. Acotado a propósito, pedido
+explícito del usuario: **sin rastreo facial todavía** — eso es v9, después de
+validar que voz + sentimiento + expresión funcionan bien juntos.
+
+**Hito 1: Base funcional traída completa — COMPLETADO**
+- ✅ Copiado `realtime_voice.py`/`sentiment_analyzer.py` desde `v2/`, y
+  `pico_serial.py`/`estado_base.py`/`diagnostico_canal.py` desde `v7/`, sin
+  cambios de lógica
+- ✅ Deliberadamente sin copiar `face_tracker.py`: v8 no rastrea el rostro
+  todavía
+
+**Hito 2: `main.py` — de ciclo fijo a pulso dirigido por EMOCION — COMPLETADO en código**
+- ✅ `cambiar_emocion()`: único punto donde cambia la expresión, usado tanto
+  al recibir un EMOCION nuevo por serial como al expirar el pulso de 5s
+  (mismo `INTERVALO_EXPRESION_MS` de v6/v7, reusado con otro propósito)
+- ✅ Eliminado el ciclo fijo (`SECUENCIA_EMOCIONES`, `indice_emocion`) — ya
+  no hace falta, la expresión la decide siempre el EMOCION recibido
+- ✅ Sin cambios en el resto (párpados, cuello, parpadeo, DUDA/PENSATIVO/
+  NERVIOSO): dependen de `emocion_actual` sin importar cómo se estableció
+
+**Hito 3: Mac — la emoción detectada controla la Pico — COMPLETADO en código**
+- ✅ `EMOTION_TO_PICO`: 5 correspondencias razonadas en v3 (joy→FELIZ,
+  sadness→TRISTE, anger→ENOJADO, fear→NERVIOSO, surprise→SORPRENDIDO)
+- ✅ **Pedido explícito del usuario, cambiado sobre la primera versión de esta
+  tabla:** las 7 categorías de pysentimiento deben mapear a alguna expresión
+  del robot, ninguna sin enviar. `disgust`→`SOSPECHA` (no `NEUTRAL` como en
+  la tabla original de v3 — se degrada a la más parecida facialmente) y
+  `others`→`NEUTRAL` (1 a 1). `DORMIDO`/`DUDA`/`PENSATIVO` quedan sin usar:
+  ninguna categoría de pysentimiento les corresponde ni de lejos
+- ✅ Conexión a la Pico autodetectada, con `--no-pico` para desactivarla
+- ✅ **Confirmado con una conversación real por el usuario:** las 6 frases
+  de prueba (una por emoción no neutral) movieron la expresión correcta
+
+**Hito 4: `webrtc_server.py` — la conversación pasa al navegador — COMPLETADO Y VALIDADO EN CONVERSACIÓN REAL**
+- ✅ El usuario reportó que la terminal (medio-dúplex, Enter para interrumpir)
+  no daba la conversación instantánea deseada, y pidió lo que v1 ya resuelve
+  para ese problema: la voz en el navegador por WebRTC
+- ✅ Copiados `v1/webrtc_server.py` y `v1/static/index.html`, sin cambios en
+  la negociación SDP/WebRTC; nuevo endpoint `POST /api/analyze-sentiment`
+  para que el navegador mande el texto transcrito (que este proceso nunca ve
+  con WebRTC) y así poder analizarlo y avisar a la Pico
+- ✅ `EMOTION_TO_PICO` duplicado a propósito entre `webrtc_server.py` y
+  `realtime_voice.py` (mismo criterio de "copiar, no importar"); nuevo test
+  que comprueba que no diverjan
+- ✅ Verificado primero a mano (Pico conectada, sin necesitar clave de API):
+  el servidor sirvió la página y el endpoint clasificó y envió correctamente
+  a la Pico frases de prueba reales
+- ✅ **Validado por el usuario con una conversación real completa** (clave de
+  API válida, hablando de verdad por el navegador, con la Pico física): "ha
+  funcionado muy bien y el robot también ha seguido todos los sentimientos"
+
+65 tests en total. Detalle completo: [`v8/PLAN-v8.md`](v8/PLAN-v8.md).
+
+---
+
 ## Política de versiones
 
 ### Ramas y tags
@@ -319,6 +378,7 @@ cd v2             # entra en v2
 | v5.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
 | v6.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
 | v7.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
+| v8.0.0  | ✅ Completa y validada en conversación real | Raspberry Pi Pico (MicroPython) + Mac |
 
 ---
 
