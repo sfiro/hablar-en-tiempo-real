@@ -1,14 +1,17 @@
 """
-Tests de face_tracker.py: la lógica pura de FaceTracker (mapeo, EMA, zona muerta),
-inyectando una cascada falsa en vez de depender de que el detector real reconozca
-un rostro en una imagen sintética (los Haar cascades necesitan rasgos faciales
-reales; no tiene sentido intentar fabricar una imagen que los produzca de forma
-fiable). Un test aparte, marcado, sí usa el detector real sobre un frame en negro
-para confirmar al menos que "no hay rostro" se maneja sin explotar.
+Tests de face_tracker.py: la lógica pura de FaceTracker (mapeo, EMA, zona muerta,
+selección del rostro más grande), inyectando una cascada falsa en vez de depender
+de que el detector real reconozca un rostro en una imagen sintética (los Haar
+cascades necesitan rasgos faciales reales; no tiene sentido intentar fabricar una
+imagen que los produzca de forma fiable). Un test aparte sí usa el detector real
+sobre un frame en negro para confirmar al menos que "no hay rostro" se maneja
+sin explotar.
 
-Sin cambios de lógica respecto a v9/v10: `FaceTracker` no cambió, solo cambió el
-índice de cámara por defecto que usa el script standalone (no probado aquí, es
-argparse, no lógica de FaceTracker).
+Actualizados tras la validación en hardware real (23/08/2026): ANCHO/ALTO pasan
+a 1296x972 (antes 640x480 — la cámara CSI real necesitaba más resolución para
+detectar bien, ver MODIFICACIONES-LOCALES.md), y `_bbox_para_centro()` usa un
+tamaño de 200px por defecto (antes 40px) para quedar por encima del filtro
+anti-falso-positivo de 80px que `FaceTracker.procesar()` aplica desde esa fecha.
 
 Ejecutar:
     python -m pytest tests/test_face_tracker.py -v
@@ -40,9 +43,11 @@ def _frame_vacio(ancho=ANCHO, alto=ALTO):
     return np.zeros((alto, ancho, 3), dtype=np.uint8)
 
 
-def _bbox_para_centro(px, py, tamano=40, escala=ESCALA_DETECCION):
+def _bbox_para_centro(px, py, tamano=200, escala=ESCALA_DETECCION):
     """bbox en espacio reducido cuyo centro, al reescalar, cae en (px, py) del
-    frame completo."""
+    frame completo. Tamaño por defecto 200px: un rostro real delante de la
+    cámara a 1296x972 — por encima del filtro anti-falso-positivo de 80px que
+    FaceTracker.procesar() aplica desde el 23/08/2026."""
     x_full = px - tamano // 2
     y_full = py - tamano // 2
     lado = max(1, int(tamano * escala))
@@ -109,6 +114,29 @@ def test_ema_suaviza_el_salto():
     r = t.procesar(_frame_vacio())
     # Con alpha=0.2, un salto desde 90 no llega de golpe a 40.
     assert 40 < r["grado_x"] < 90
+
+
+def test_elige_el_rostro_mas_grande_no_el_primero():
+    """Hallazgo real en hardware (23/08/2026): un falso positivo fijo y pequeño
+    del fondo aparecía en rostros[0] y secuestraba la mirada. procesar() debe
+    elegir el de mayor área, sin importar el orden en que la cascada los reporte."""
+    t = FaceTracker(alpha=1.0)
+    falso_positivo_pequeno = _bbox_para_centro(20, 20, tamano=90)  # justo por encima de 80px
+    rostro_real_grande = _bbox_para_centro(ANCHO // 2, ALTO // 2, tamano=300)
+    t._cascada = FakeCascada([falso_positivo_pequeno, rostro_real_grande])
+    r = t.procesar(_frame_vacio())
+    assert r["detectado"] is True
+    assert 85 <= r["grado_x"] <= 95  # centrado: el rostro grande, no el pequeño de la esquina
+
+
+def test_descarta_detecciones_menores_de_80px():
+    """Un objeto pequeño detectado como 'rostro' (por debajo de 80px de lado)
+    se trata como si no hubiera detección — evita que falsos positivos chicos
+    muevan la mirada."""
+    t = FaceTracker()
+    t._cascada = FakeCascada([_bbox_para_centro(ANCHO // 2, ALTO // 2, tamano=60)])
+    r = t.procesar(_frame_vacio())
+    assert r["detectado"] is False
 
 
 def test_deteccion_real_sobre_frame_negro_no_falla():

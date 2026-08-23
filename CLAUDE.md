@@ -192,25 +192,39 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
   interno: en su lugar, un script nuevo del lado de la Pi 5,
   [`v12/rastreo_expresiones.py`](v12/rastreo_expresiones.py), hace de
   "reloj externo" mandando una `EMOCION` nueva cada `--interval` segundos
-  (5 por defecto, igual al pulso del firmware). La cámara de esta versión
-  es una **webcam USB** (`/dev/video1`, V4L2 genérico), no la cámara CSI de
-  v10 — por eso `face_tracker.py` no necesita `picamera2`: el mismo
-  `cv2.VideoCapture` que usaban v3-v9 en el Mac funciona igual aquí, solo
-  cambiando el índice de cámara por defecto (1, no 0). Sin voz, tampoco
-  hace falta `.env`/`OPENAI_API_KEY`/`pysentimiento`/servidor HTTP alguno —
-  el `requirements.txt` más corto de todo el proyecto (`pyserial` +
-  `opencv-python<5`). 29 tests, todos pasando sin hardware; **código
-  completo, sin validar todavía en la Raspberry Pi 5 real** — igual
-  situación en la que quedó v10 al escribirse.
+  (5 por defecto, igual al pulso del firmware). La planificación original
+  asumía una webcam USB (`/dev/video1`, V4L2 genérico) para no necesitar
+  `picamera2` como v10 — **corregido tras validar en hardware real
+  (23/08/2026): la cámara de esta Pi 5 es la CSI OV5647** (conector
+  CAM/DISP 1), igual que v10. `face_tracker.py` incorporó
+  `abrir_camara_csi()`/`leer_frame()` portadas literalmente de v10, con la
+  webcam USB como respaldo automático si no hay CSI disponible — el venv de
+  v12 sí necesita `--system-site-packages`, como v10. La validación
+  encontró y corrigió tres bugs reales no anticipados por ningún test sin
+  hardware: la cascada Haar casi no detectaba caras a 640×480 con la OV5647
+  (resuelto subiendo a 1296×972 y relajando `scaleFactor`/`minNeighbors`),
+  un falso positivo fijo del fondo secuestraba la mirada (resuelto eligiendo
+  el rostro de mayor área, no el primero), y el bug más importante — el
+  firmware imprime por cada comando recibido y nadie leía esa salida, así
+  que el buffer USB CDC de la Pico se llenaba en segundos y su `print()`
+  bloqueaba el firmware entero (resuelto con `_drenar_entrada()` en
+  `pico_serial.py`). Detalle completo, con mediciones:
+  [`v12/MODIFICACIONES-LOCALES.md`](v12/MODIFICACIONES-LOCALES.md). Sin voz,
+  tampoco hace falta `.env`/`OPENAI_API_KEY`/`pysentimiento`/servidor HTTP
+  alguno. 33 tests, todos pasando sin hardware. **✅ Completa y validada en
+  hardware real**, con la Pico ciclando las 10 expresiones y el rastreo
+  siguiendo un rostro real de forma sostenida en el tiempo.
 
 **Regla del proyecto, válida para todas las versiones: ninguna versión importa
 código de otra carpeta de versión.** v2 es una copia de v1 con el añadido de
 sentimiento, no un import de v1. v4, v5, v6, v7, v9, v10 y v12 tienen sus propias
 copias de `face_tracker.py` y `pico_serial.py` (misma lógica entre sí y con v3;
 v10 adapta `pico_serial.py` para Linux y `face_tracker.py` para cámara CSI; v12
-reutiliza el `pico_serial.py` ya adaptado por v10 y adapta `face_tracker.py` solo
-en el índice de cámara por defecto, ver su sección más abajo — adaptar no es lo
-mismo que importar), no las importan con una ruta relativa cruzada. v8 sigue el
+reutiliza el `pico_serial.py` ya adaptado por v10 (con un método nuevo,
+`_drenar_entrada()`, añadido tras validar en hardware real) y porta a
+`face_tracker.py` el mismo soporte de cámara CSI que v10, con la webcam USB
+como respaldo — ver su sección más abajo; adaptar no es lo mismo que
+importar), no las importan con una ruta relativa cruzada. v8 sigue el
 mismo patrón para lo que sí reutiliza (`pico_serial.py` de v7,
 `realtime_voice.py`/`sentiment_analyzer.py` de v2), pero **no** copia
 `face_tracker.py`: v8 no rastrea el rostro todavía, a propósito (ver sección de v8),
@@ -227,12 +241,13 @@ código explícitamente no usado, y su historial ya vive en `v5/README-v5.md`.
 Cada carpeta de versión de cliente (v1/v2/v3 y la parte Mac de v4/v5/v6/v7/v8/v9;
 la parte Raspberry Pi 5 de v10/v11/v12) tiene su propio `.venv/`, `requirements.txt`
 y `.env` (salvo v12, que no toca voz y no necesita ningún `.env`/`OPENAI_API_KEY` —
-ver su sección más abajo). En v10 el venv debe crearse con
-`--system-site-packages` — ver `v10/README-v10.md` — porque `picamera2` se
-instala por `apt`, no por `pip`, y un venv normal no vería ese paquete. v11 y v12
-no tienen esa restricción: ninguna de las dos usa un paquete que solo exista
-instalado por `apt` (v11 sin cámara ni Pico; v12 con Pico pero con una cámara USB
-que `cv2.VideoCapture` ya sabe abrir, sin `picamera2`), así que su venv es un
+ver su sección más abajo). En v10 y v12 el venv debe crearse con
+`--system-site-packages` — ver `v10/README-v10.md` y `v12/README-v12.md` —
+porque `picamera2` se instala por `apt`, no por `pip`, y un venv normal no
+vería ese paquete: las dos usan cámara CSI en el hardware real (v12 se
+planificó primero con webcam USB, pero la Pi 5 real resultó tener cámara CSI
+— ver la sección de v12 más arriba). v11 es la única de las tres sin esa
+restricción: no usa cámara ni Pico, así que su venv es un
 `python3 -m venv .venv` normal.
 
 **Las piezas que rompen el patrón de venv son `main.py` (v4/v5/v6/v7/v8/v9/v10/v12) y
@@ -1039,32 +1054,81 @@ ese instante — mismo razonamiento que `ULTIMA_MIRADA` en
 `v9/webrtc_server.py`, aquí sin necesitar servidor HTTP: es un único
 proceso con dos hilos (uno para la cámara, el principal para el ciclo).
 
-**La cámara de esta versión es una webcam USB, no la CSI de v10 — decisión
-que simplifica bastante.** El usuario indicó que la cámara de esta Pi 5 está
-conectada por USB, enumerando como dispositivo V4L2 genérico
-(`/dev/video1`), no por el conector de cinta CSI que usó v10. Eso significa
-que `cv2.VideoCapture` —el mismo que ya sabían abrir v3-v9 en el Mac— habla
-directamente con ella, sin necesitar el wrapper `picamera2`/`libcamera` que
-v10 sí necesitó, ni un venv con `--system-site-packages`.
-[`v12/face_tracker.py`](v12/face_tracker.py) es la copia de
-`FaceTracker` de v9 (EMA, zona muerta, mapeo a grados — sin cambios de
-lógica), con el único cambio real de que `--camera-index` por defecto pasa
-de 0 (Mac) a 1 (donde esta Pi 5 concreta enumera la webcam).
+**La cámara: planificada como webcam USB, corregida a CSI tras validar en
+hardware real (23/08/2026).** La planificación inicial asumía que la Pi 5
+tenía una webcam USB conectada (enumerando como `/dev/video1`, V4L2
+genérico), para no necesitar el wrapper `picamera2`/`libcamera` que sí usa
+v10. Al conectar la Pi 5 real, resultó que su cámara es la **CSI OV5647**
+(conector CAM/DISP 1) — el mismo tipo de cámara que v10, y por el mismo
+motivo: no habla el API de `cv2.VideoCapture`.
+[`v12/face_tracker.py`](v12/face_tracker.py) incorporó
+`abrir_camara_csi()`/`leer_frame()`, portadas literalmente de
+`v10/face_tracker.py` (import diferido de `picamera2`, para que los tests no
+lo necesiten instalado); [`v12/rastreo_expresiones.py`](v12/rastreo_expresiones.py)
+y el nuevo `v12/rastreo_solo.py` intentan la cámara CSI primero y solo si
+falla (sin `picamera2`, o cualquier otra excepción) caen automáticamente al
+`cv2.VideoCapture` original como respaldo — `_hilo_rastreo()` pasó a recibir
+un *callable* `leer()` sin argumentos en vez de un objeto de cámara
+concreto, para servir a los dos casos sin ramificar el bucle. El venv de v12
+sí necesita `--system-site-packages`, como v10 — contrario a lo planificado
+originalmente.
+
+**Tres bugs reales encontrados y corregidos en la validación, ninguno
+anticipado por los tests sin hardware** (detalle completo, con mediciones:
+[`v12/MODIFICACIONES-LOCALES.md`](v12/MODIFICACIONES-LOCALES.md)):
+1. La cascada Haar casi no detectaba caras a 640×480 con la OV5647 (0.4% de
+   los frames — esa resolución hace un crop del sensor que deja la cara mal
+   encuadrada). Resuelto subiendo a `ANCHO=1296, ALTO=972` y relajando
+   `detectMultiScale` de `scaleFactor=1.3, minNeighbors=5` a `1.2, 4` — 100%
+   de detección, medido con una persona real delante de la cámara.
+2. Un falso positivo fijo y pequeño del fondo (~64×64px) secuestraba la
+   mirada porque `FaceTracker.procesar()` tomaba `rostros[0]` (el primero
+   de la lista). Resuelto eligiendo el rostro de **mayor área** entre todas
+   las detecciones, y descartando las menores de 80px de lado.
+3. **El bug más importante: el buffer USB CDC de la Pico se desbordaba.**
+   El firmware imprime `Serial: LR=.., UD=..` por cada comando que recibe
+   (su `print()` de debug), y este lado solo escribía al puerto —nunca leía
+   esa salida— así que el buffer de 256 bytes se llenaba en pocos segundos
+   de rastreo activo, y el `print()` de MicroPython **bloquea el firmware**
+   cuando su buffer de salida está lleno: la Pico dejaba de procesar
+   comandos nuevos. El síntoma ("el rastreo empieza bien y muere a los
+   ~10s") era muy engañoso porque el log del lado de la Pi seguía creciendo
+   — parecía un bug del rastreo, no del enlace serial. Confirmado con
+   `cat /dev/ttyACM0` mostrando comandos viejos acumulados sin leer.
+   Resuelto con un método nuevo, `_drenar_entrada()`, en `PicoLink`
+   (`v12/pico_serial.py`) — lee y descarta la salida de la Pico en cada
+   ciclo del hilo de envío y justo después de cada escritura. **Regla
+   general, útil para cualquier firmware de este proyecto:** si un
+   dispositivo USB CDC "se muere a los pocos segundos de recibir datos", lo
+   primero a comprobar es si su buffer de salida se está llenando con algo
+   que nadie lee.
+
+Además, dos ajustes de calibración validados en hardware: cadencia de envío
+a la Pico limitada a 200ms (a 20 envíos/s el buffer volvía a saturarse), y
+`FaceTracker(alpha=0.5, zona_muerta=0)` en el hilo de rastreo — el firmware
+ya suaviza el movimiento internamente (`ALPHA=0.1` en `main.py`), así que el
+cliente necesita mandar un flujo continuo de objetivos, no comandos
+discretos que se cortan al converger un filtro propio. Nuevo
+[`v12/rastreo_solo.py`](v12/rastreo_solo.py): rastreo facial puro, sin ciclo
+de expresiones, creado para aislar el rastreo de DUDA/PENSATIVO/NERVIOSO
+(que mueven la mirada por su cuenta y confundían la depuración). Tres
+herramientas de diagnóstico incorporadas al repo, usadas para medir cada bug
+antes del fix: `diagnostico_rastreo.py`, `diagnostico_params.py`,
+`capturar_deteccion.py` (pensadas para correr en la Pi 5 real, con la ruta
+del proyecto fija en `/home/pi/v12`).
 
 **Sin voz, no hace falta nada de la infraestructura de OpenAI.**
 [`v12/rastreo_expresiones.py`](v12/rastreo_expresiones.py) no abre ningún
 servidor HTTP, no lee `.env`, no necesita `OPENAI_API_KEY` ni
-`pysentimiento` — es el `requirements.txt` más corto de todo el proyecto
-(`pyserial` + `opencv-python<5`, nada más). `pico_serial.py` se copia sin
-cambios de `v10/pico_serial.py` (ya adaptado a Linux:
-`encontrar_puerto_pico()`, `/dev/ttyACM*`, nota del grupo `dialout`) — v12
-es también un cliente Raspberry Pi 5, así que no hace falta volver a
-adaptarlo. `estado_base.py` y `diagnostico_canal.py` se copian sin cambios
-de v9; se documentó (sin corregirla, por estar fuera de alcance de esta
-versión) una inconsistencia preexistente encontrada al copiar
-`diagnostico_canal.py`: sigue usando el controlador PCA9685 por I2C, el
-enfoque que `main.py`/`estado_base.py` abandonaron desde v5 — ya estaba así
-en v9 y en todas las versiones intermedias, no es un error introducido aquí.
+`pysentimiento`. `pico_serial.py` parte de `v10/pico_serial.py` (ya
+adaptado a Linux: `encontrar_puerto_pico()`, `/dev/ttyACM*`, nota del grupo
+`dialout`), con `_drenar_entrada()` añadido tras el bug 3 de arriba.
+`estado_base.py` y `diagnostico_canal.py` se copian sin cambios de v9; se
+documentó (sin corregirla, por estar fuera de alcance de esta versión) una
+inconsistencia preexistente encontrada al copiar `diagnostico_canal.py`:
+sigue usando el controlador PCA9685 por I2C, el enfoque que
+`main.py`/`estado_base.py` abandonaron desde v5 — ya estaba así en v9 y en
+todas las versiones intermedias, no es un error introducido aquí.
 
 **`_siguiente_indice()`, aislado como función pura y testeada** (mismo
 patrón que `_decidir_sueno()` en v9): avanza el índice del ciclo de 10
@@ -1073,17 +1137,23 @@ reales. Un test cruza `CICLO_EMOCIONES` contra `EMOCIONES_VALIDAS` de
 `pico_serial.py` para que el ciclo nunca incluya, en silencio, una emoción
 que la Pico rechazaría.
 
-**Cómo se verificó:** sintaxis de los 5 ficheros `.py` del lado cliente, y
-29 tests (8 de `FaceTracker`, 10 de `pico_serial.py`, 4 de `estado_base.py`,
-7 de la lógica del ciclo), todos pasando dentro de `v12/.venv`, sin ninguna
-referencia a v9/v10. Arranque real de `rastreo_expresiones.py` en este
-entorno (sin Pico ni cámara con permiso concedido): degrada limpiamente en
-ambos casos — confirmado en los logs que el ciclo de expresiones sigue
-avanzando cada `--interval` segundos con la mirada fija en 90,90, en vez de
-fallar con una excepción sin manejar. **Sin validar todavía en hardware
-real** (Raspberry Pi 5, Pico, webcam) — igual situación en la que quedó v10
-al escribirse. Detalle completo:
-[`v12/README-v12.md`](v12/README-v12.md) y [`v12/PLAN-v12.md`](v12/PLAN-v12.md).
+**Cómo se verificó:** sintaxis de los ficheros `.py` del lado cliente, y 33
+tests (8 de `FaceTracker` — incluida la selección del rostro más grande y el
+filtro de 80px—, 12 de `pico_serial.py` —incluido `_drenar_entrada()`—, 4 de
+`estado_base.py`, 7 de la lógica del ciclo), todos pasando dentro de
+`v12/.venv`, sin `picamera2` instalado (confirma que el import diferido no
+rompe nada) y sin ninguna referencia a v9/v10. Arranque real de
+`rastreo_expresiones.py` en un entorno sin Pico ni `picamera2`: intenta CSI,
+falla limpiamente con el mensaje de instalación, cae a webcam USB, falla
+limpiamente también (sin permiso), y el ciclo de expresiones sigue con la
+mirada fija en 90,90 — la cadena de respaldo completa degrada sin
+excepciones no manejadas. **✅ Completa y validada en hardware real**
+(23/08/2026): cámara CSI abierta sin errores, Pico detectada en
+`/dev/ttyACM0`, ciclo de las 10 expresiones enviándose en orden, y rastreo
+facial siguiendo un rostro real de forma continua y sostenida en el tiempo
+tras los tres fixes de arriba. Detalle completo:
+[`v12/README-v12.md`](v12/README-v12.md), [`v12/PLAN-v12.md`](v12/PLAN-v12.md)
+y [`v12/MODIFICACIONES-LOCALES.md`](v12/MODIFICACIONES-LOCALES.md).
 
 ## Cómo verificar cambios (todas las versiones)
 

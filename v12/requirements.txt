@@ -1,13 +1,20 @@
 # v12 — Raspberry Pi 5 + Pico: ciclo de expresiones + rastreo facial real.
 # Sin conversación de voz todavía (a propósito, ver PLAN-v12.md) — por eso no
 # hay websockets/sounddevice/python-dotenv/certifi ni pysentimiento aquí: nada
-# de esta versión habla con OpenAI. La lista más corta de todo el proyecto.
+# de esta versión habla con OpenAI.
 
 # Enlace serial hacia la Pico (pico_serial.py, adaptado de v10 para Linux).
 pyserial>=3.5
 
-# Rastreo facial (face_tracker.py): la cámara de esta versión es una webcam USB
-# (V4L2, /dev/video1), no CSI — a diferencia de v10, no hace falta picamera2.
-# Fijado a la serie 4.x: OpenCV 5.0 movió CascadeClassifier a
-# opencv-contrib-python. Ver CLAUDE.md para el detalle.
+# Rastreo facial (face_tracker.py). Fijado a la serie 4.x: OpenCV 5.0 movió
+# CascadeClassifier a opencv-contrib-python. Ver CLAUDE.md para el detalle.
 opencv-python>=4.9.0,<5
+
+# picamera2 NO va aquí a propósito, igual que en v10/requirements.txt: la
+# cámara real de esta versión es la CSI OV5647 (conector CAM/DISP 1), y
+# picamera2 se instala por `apt` (python3-picamera2), no por `pip` — depende
+# de bibliotecas nativas de libcamera compiladas para la placa. El venv debe
+# crearse con --system-site-packages para verlo (ver README-v12.md). Sin
+# picamera2 instalado, rastreo_expresiones.py/rastreo_solo.py caen
+# automáticamente a la webcam USB vía opencv-python (respaldo, no la vía
+# principal en el hardware real validado).

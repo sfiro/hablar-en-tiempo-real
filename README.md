@@ -28,10 +28,12 @@ con Firefox + STUN, y una tercera con cancelación de eco real de PipeWire;
 corregidos varios bugs reales de sample rate ALSA, Chromium roto en esta
 Pi, y WebRTC sin servidores STUN; añadido un sistema de arranque
 automático, sin validar todavía el ciclo completo de reinicio) · v12
-código completo, validación en hardware pendiente (Pi 5 conectada por USB
-a la Pico —firmware de v9, sin cambios— ciclando las 10 expresiones cada
-5s con la mirada real de una webcam USB; todavía sin conversación de voz,
-a propósito).
+**validada en hardware real** (Pi 5 conectada por USB a la Pico —firmware
+de v9, sin cambios— ciclando las 10 expresiones cada 5s con la mirada real
+de la cámara CSI de la Pi 5; tres bugs reales corregidos tras validar
+—cascada mal calibrada, falso positivo secuestrando la mirada, y el buffer
+USB de la Pico desbordándose—; todavía sin conversación de voz, a
+propósito).
 
 ## 📦 Versiones disponibles
 
@@ -359,10 +361,10 @@ python realtime_voice.py --barge-in       # vía terminal, validada
 
 Ver [`v11/README-v11.md`](v11/README-v11.md) y [`v11/PLAN-v11.md`](v11/PLAN-v11.md).
 
-### [v12](v12/) — Pi 5 + Pico: ciclo de expresiones + rastreo real, sin voz 🔄 (código completo, validación pendiente)
+### [v12](v12/) — Pi 5 + Pico: ciclo de expresiones + rastreo real, sin voz ✅ (validada en hardware real)
 **Estado:** Rama paralela a v10/v11, no una continuación de ninguna de las
 dos. Conecta la Raspberry Pi 5 a la Pico por USB serial (el mismo firmware
-de v9, `main.py`, sin ningún cambio) y, con la webcam USB de la propia Pi 5,
+de v9, `main.py`, sin ningún cambio) y, con la cámara de la propia Pi 5,
 cicla las 10 expresiones cada 5 segundos con la mirada real del rastreo
 facial — **todavía sin conversación de voz**, a propósito, para validar
 primero que la Pi 5 controla bien la Pico y su propia cámara.
@@ -375,22 +377,30 @@ la mantiene 5s). El ciclo vive ahora en un script nuevo del lado de la Pi 5,
 rastreado — el mismo firmware queda listo, sin tocar nada más, para cuando
 se retome la voz.
 
-La cámara de esta versión es una **webcam USB** (`/dev/video1`, V4L2), no la
-cámara CSI de v10 — por eso no hace falta `picamera2`: el mismo
-`cv2.VideoCapture` que ya usaban v3-v9 en el Mac funciona igual aquí, solo
-cambiando el índice de cámara por defecto. Sin voz, tampoco hace falta
-`.env`, `OPENAI_API_KEY` ni `pysentimiento` — el `requirements.txt` más
-corto de todo el proyecto.
+La planificación original asumía una webcam USB (`/dev/video1`, V4L2), para
+no necesitar `picamera2` como v10 — **la validación en hardware real
+(23/08/2026) encontró que esta Pi 5 usa la cámara CSI OV5647**, igual que
+v10. `face_tracker.py` incorporó el mismo soporte CSI de v10, con la webcam
+USB como respaldo automático si no hay CSI disponible. La validación
+encontró y corrigió **tres bugs reales**, ninguno anticipado por los tests
+sin hardware: la cascada Haar casi no detectaba caras a 640×480 con la
+OV5647 (resuelto subiendo a 1296×972 y relajando sus parámetros), un falso
+positivo fijo del fondo secuestraba la mirada (resuelto eligiendo el rostro
+de mayor área, no el primero), y el bug más importante — el firmware
+imprime por cada comando recibido y nadie leía esa salida, así que el
+buffer USB de la Pico se llenaba y su `print()` bloqueaba el firmware
+entero (resuelto drenando esa salida en `pico_serial.py`). Sin voz, no hace
+falta `.env`, `OPENAI_API_KEY` ni `pysentimiento`.
 
-**Sin validar todavía en hardware real** — escrito sin una Raspberry Pi 5,
-Pico ni webcam delante, igual situación en la que quedó v10. Verificado
-hasta donde este entorno lo permite: sintaxis, 29 tests (todos pasando), y
-arranque real de `rastreo_expresiones.py` degradando limpiamente sin Pico
-ni permiso de cámara, en vez de fallar con una excepción sin manejar.
+**✅ Completa y validada en hardware real** (33 tests, todos pasando; Pico
+ciclando las 10 expresiones y rastreo facial siguiendo un rostro real de
+forma sostenida en el tiempo tras los tres fixes) — detalle completo del
+proceso de depuración en
+[`v12/MODIFICACIONES-LOCALES.md`](v12/MODIFICACIONES-LOCALES.md).
 
 ```bash
 cd v12 && source .venv/bin/activate
-python -m pytest tests/ -v                 # 29 tests
+python -m pytest tests/ -v                 # 33 tests
 python rastreo_expresiones.py              # Pico + cámara real, ciclo cada 5s
 ```
 
@@ -439,8 +449,9 @@ Ver [`v12/README-v12.md`](v12/README-v12.md) y [`v12/PLAN-v12.md`](v12/PLAN-v12.
   `opencv-python`, no toca cámara. La versión pensada para probarse primero,
   mientras no llega la cámara de v10
 - **v12 necesita:** una Raspberry Pi 5 conectada por USB a la Pico, y una
-  webcam USB (no CSI, a diferencia de v10 — así que sin `picamera2`). No
-  necesita micrófono, parlante, pantalla ni navegador: no toca voz
+  cámara CSI (la validada en hardware real — `picamera2`, igual que v10; con
+  webcam USB como respaldo automático si no hay CSI disponible). No necesita
+  micrófono, parlante, pantalla ni navegador: no toca voz
 
 ## 📋 Comparativa de versiones
 
@@ -450,22 +461,23 @@ Ver [`v12/README-v12.md`](v12/README-v12.md) y [`v12/PLAN-v12.md`](v12/PLAN-v12.
 | Voz en tiempo real | ✅ | ✅ (hereda de v1) | ✅ (hereda de v2) | — (a propósito) | — (a propósito) | — (a propósito) | — (a propósito) | ✅ (hereda de v2) | ✅ (hereda de v8) | ✅ (hereda de v9) | ✅ validado en real (terminal, `--barge-in`) | — (a propósito, ver v12) |
 | Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 | n/a | n/a | n/a | n/a | igual que v1 | igual que v1 | igual que v1 (Chromium en la Pi 5) | Validada 3 formas: Firefox+STUN, `BargeInDetector`, y AEC real de PipeWire | n/a (sin voz) |
 | Análisis de emociones | — | ✅ `pysentimiento`, en consola | ✅ (hereda de v2) | — | — | — | — | ✅ (hereda de v2) | ✅ (hereda de v8) | ✅ (hereda de v9) | — (a propósito, ver v11) | — (a propósito, sin voz) |
-| Rastreo facial (ojos) | — | — | 🔄 falta cámara real | ✅ validado en real | ✅ (hereda de v4) | ✅ (hereda de v5) | ✅ (hereda de v6) | — (a propósito, ver v9) | ✅ validado en real | 🔄 cámara CSI, código completo | — (a propósito, ver v11) | 🔄 webcam USB, código completo |
+| Rastreo facial (ojos) | — | — | 🔄 falta cámara real | ✅ validado en real | ✅ (hereda de v4) | ✅ (hereda de v5) | ✅ (hereda de v6) | — (a propósito, ver v9) | ✅ validado en real | 🔄 cámara CSI, código completo | — (a propósito, ver v11) | ✅ validado en real (cámara CSI, tras 3 fixes) |
 | Cuello (PAN/TILT) | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | n/a (sin Pico) | ✅ (hereda de v6/v7, vía v9) |
 | Parpadeo | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | n/a (sin Pico) | ✅ (hereda de v6/v7, vía v9) |
 | Utilidad de estado base | — | — | — | — | — | ✅ validada en real | ✅ (hereda de v6) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | n/a (sin Pico) | ✅ (hereda de v9) |
 | Expresiones faciales | — | — | — | — | — | ✅ secuencia fija, validada en real | ✅ (hereda de v6) | ✅ dirigidas por sentimiento (pulso 5s) | ✅ (hereda de v8) | ✅ (hereda de v8) | n/a (sin Pico) | ✅ ciclo fijo cada 5s, desde el cliente (no el firmware) |
 | Modo dormido por inactividad | — | — | — | — | — | — | — | — | ✅ validado en real | ✅ (hereda de v9) | n/a (sin Pico) | — (a propósito, sin voz que mida actividad) |
-| Rastreo real + expresiones a la vez | — | — | — | — | — | — | ✅ validado en real | n/a (sin rastreo aún) | ✅ validado en real | 🔄 código completo | n/a | 🔄 código completo |
-| Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | 🔄 Código completo, validación pendiente (bloqueada por la cámara) | ✅ Validada (terminal y navegador); falta el ciclo de autoarranque | 🔄 Código completo, validación pendiente |
+| Rastreo real + expresiones a la vez | — | — | — | — | — | — | ✅ validado en real | n/a (sin rastreo aún) | ✅ validado en real | 🔄 código completo | n/a | ✅ validado en real, desde el cliente |
+| Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | 🔄 Código completo, validación pendiente (bloqueada por la cámara) | ✅ Validada (terminal y navegador); falta el ciclo de autoarranque | ✅ Completa y validada en hardware real |
 
 **Nota sobre independencia:** cada carpeta de versión tiene sus propias copias de
 cualquier código que reutilice de otra (nunca lo importa con una ruta cruzada). Por
-eso `pico_serial.py` existe, con la misma lógica, de `v3/` a `v12/` (adaptado a
-Linux en v10, reutilizado sin cambios en v12), y `face_tracker.py` en `v3/` a `v7/`,
-en `v9/`, `v10/` y `v12/` (v8 no lo incluye: no rastreaba el rostro todavía, a
-propósito). Puedes borrar cualquier carpeta de versión anterior y las demás siguen
-funcionando.
+eso `pico_serial.py` existe, con la misma lógica base, de `v3/` a `v12/` (adaptado
+a Linux en v10; en v12, además, con `_drenar_entrada()` nuevo tras un bug real de
+buffer USB), y `face_tracker.py` en `v3/` a `v7/`, en `v9/`, `v10/` y `v12/` (v8 no
+lo incluye: no rastreaba el rostro todavía, a propósito; v12 porta de v10 el
+soporte de cámara CSI, con webcam USB como respaldo). Puedes borrar cualquier
+carpeta de versión anterior y las demás siguen funcionando.
 
 ## 📖 Estructura del proyecto
 
@@ -575,16 +587,19 @@ funcionando.
 │   ├── README-v11.md       # Por qué existe junto a v10, hallazgos de la validación real
 │   ├── README-IMPLEMENTACION.md  # Diario de implementación en la Pi real (17/08, 22/08, 23/08)
 │   └── PLAN-v11.md
-├── v12/                    # Pi 5 + Pico: ciclo de expresiones + rastreo real, sin voz
+├── v12/                    # Pi 5 + Pico: ciclo de expresiones + rastreo real, sin voz — VALIDADA
 │   ├── main.py             # Copia de v9, sin cambios (firmware, dirigido por eventos)
-│   ├── pico_serial.py      # Copia de v10, sin cambios (Linux, /dev/ttyACM*)
-│   ├── face_tracker.py     # FaceTracker sin cambios; --camera-index por defecto: 1 (webcam USB)
-│   ├── rastreo_expresiones.py  # Nuevo: ciclo de 10 expresiones cada 5s + hilo de rastreo, sin voz
+│   ├── pico_serial.py      # v10 + _drenar_entrada() (fix real: buffer USB de la Pico se desbordaba)
+│   ├── face_tracker.py     # FaceTracker + abrir_camara_csi()/leer_frame() (portadas de v10, cámara real)
+│   ├── rastreo_expresiones.py  # Ciclo de 10 expresiones/5s + hilo de rastreo, CSI con respaldo USB
+│   ├── rastreo_solo.py     # Nuevo: solo rastreo, sin ciclo de expresiones (para depurar aislado)
 │   ├── estado_base.py      # Copia autónoma de v9, sin cambios
 │   ├── diagnostico_canal.py # Copia autónoma de v9, sin cambios
-│   ├── tests/              # 29 tests
+│   ├── diagnostico_rastreo.py, diagnostico_params.py, capturar_deteccion.py  # Herramientas de depuración en la Pi 5
+│   ├── tests/              # 33 tests
 │   ├── README-v12.md
-│   └── PLAN-v12.md
+│   ├── PLAN-v12.md
+│   └── MODIFICACIONES-LOCALES.md  # Diario de validación en hardware real (23/08/2026)
 ├── docs/
 │   └── RASPBERRY-PI.md     # Especificación headless, aparcada (v10/v11 tomaron otro camino)
 ├── CLAUDE.md               # Contexto técnico completo del proyecto
@@ -624,4 +639,4 @@ ahí, en vez de reinventarlos. Ver [`v3/README-v3.md`](v3/README-v3.md).
 
 ---
 
-**Última actualización:** Agosto 23, 2026 (v12: ciclo de expresiones + rastreo real Pi 5↔Pico, sin voz — código completo, validación pendiente)
+**Última actualización:** Agosto 23, 2026 (v12: validada en hardware real — cámara CSI, tres bugs reales corregidos: cascada mal calibrada, falso positivo, y buffer USB de la Pico desbordado)

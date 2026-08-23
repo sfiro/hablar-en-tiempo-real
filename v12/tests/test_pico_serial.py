@@ -2,9 +2,10 @@
 Tests de pico_serial.py.
 
 Sin hardware real: se inyecta un `serial_factory` falso que registra lo escrito,
-en vez de abrir un puerto de verdad. Verifica formato de comando, cola, latido y
-reconexión. Sin cambios de lógica respecto a v10 (mismo fichero, adaptado a
-Linux desde v9/v8/v7/v6/v5/v4/v3).
+en vez de abrir un puerto de verdad. Verifica formato de comando, cola, latido,
+reconexión, y el drenado de la salida de la Pico (`_drenar_entrada()`, añadido
+tras el bug real de buffer USB desbordado encontrado en hardware el 23/08/2026
+— ver la cabecera de pico_serial.py y MODIFICACIONES-LOCALES.md).
 
 Ejecutar:
     python -m pytest tests/test_pico_serial.py -v
@@ -22,7 +23,9 @@ from pico_serial import PicoLink, _formatear_comando, EMOCIONES_VALIDAS
 
 
 class FakeSerial:
-    """Imita pyserial.Serial: registra lo escrito, puede simular una escritura rota."""
+    """Imita pyserial.Serial: registra lo escrito, puede simular una escritura rota,
+    y simula la salida que la Pico "devuelve" (in_waiting/read) para poder probar
+    _drenar_entrada() sin un dispositivo real."""
 
     def __init__(self, port, baud):
         self.port = port
@@ -30,6 +33,7 @@ class FakeSerial:
         self.escritos = []
         self.cerrado = False
         self.fallar_siguiente_escritura = False
+        self._pendiente = b""
 
     def write(self, data: bytes):
         if self.fallar_siguiente_escritura:
@@ -38,6 +42,32 @@ class FakeSerial:
 
     def close(self):
         self.cerrado = True
+
+    def simular_respuesta_pico(self, data: bytes):
+        """Encola bytes como si la Pico los hubiera enviado (su `print()` de debug)."""
+        self._pendiente += data
+
+    @property
+    def in_waiting(self):
+        return len(self._pendiente)
+
+    def read(self, n: int):
+        leido, self._pendiente = self._pendiente[:n], self._pendiente[n:]
+        return leido
+
+
+class FakeSerialSinInWaiting:
+    """Imita un serial_factory sin in_waiting/read (para confirmar que
+    _drenar_entrada() no explota si el objeto inyectado no los tiene)."""
+
+    def __init__(self, port, baud):
+        self.escritos = []
+
+    def write(self, data: bytes):
+        self.escritos.append(data.decode("utf-8"))
+
+    def close(self):
+        pass
 
 
 def _fabrica_que_falla(port, baud):
@@ -181,3 +211,59 @@ def test_escritura_rota_se_trata_como_desconexion_y_reintenta():
         link.stop()
 
     assert intentos["n"] > 1, "debería haber intentado reconectar tras la desconexión"
+
+
+# --- _drenar_entrada() — bug real del buffer USB desbordado (23/08/2026) ----
+
+def test_drenar_entrada_vacia_el_buffer_de_respuesta_de_la_pico():
+    """El firmware imprime 'Serial: LR=.., UD=..' por cada comando recibido.
+    Sin drenarla, esa salida se acumularía sin límite; PicoLink debe leerla y
+    descartarla, dejando el buffer simulado en 0."""
+    fakes = []
+
+    def fabrica(port, baud):
+        f = FakeSerial(port, baud)
+        fakes.append(f)
+        return f
+
+    link = PicoLink(port="/dev/ttyACM_FAKE", serial_factory=fabrica, heartbeat_s=0.05)
+    link.start()
+    try:
+        for _ in range(20):
+            if link.esta_conectado():
+                break
+            time.sleep(0.05)
+        assert link.esta_conectado()
+
+        # Simula el firmware respondiendo a cada comando, como en hardware real.
+        for _ in range(30):
+            fakes[0].simular_respuesta_pico(b"Serial: LR=90, UD=90\n")
+        assert fakes[0].in_waiting > 0
+
+        link.enviar(90, 90, "NEUTRAL")
+        time.sleep(0.3)  # da tiempo a que el hilo drene tras escribir/latir
+    finally:
+        link.stop()
+
+    assert fakes[0].in_waiting == 0, (
+        "PicoLink debería haber drenado toda la salida simulada de la Pico"
+    )
+
+
+def test_drenar_entrada_no_falla_sin_in_waiting():
+    """Con un serial_factory que no expone in_waiting/read (como el FakeSerial
+    original, o cualquier doble mínimo), _drenar_entrada() no debe lanzar."""
+    link = PicoLink(port="/dev/ttyACM_FAKE", serial_factory=FakeSerialSinInWaiting,
+                     heartbeat_s=0.05)
+    link.start()
+    try:
+        for _ in range(20):
+            if link.esta_conectado():
+                break
+            time.sleep(0.05)
+        assert link.esta_conectado()
+        link.enviar(90, 90, "NEUTRAL")  # no debe lanzar pese a drenar sin in_waiting
+        time.sleep(0.2)
+        assert link.esta_conectado()
+    finally:
+        link.stop()

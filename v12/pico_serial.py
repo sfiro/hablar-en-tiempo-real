@@ -28,6 +28,24 @@ ejecute este script necesita pertenecer al grupo `dialout` para poder abrir
 y volver a entrar). Sin eso, `_pyserial_factory` falla con `PermissionError` y
 `PicoLink` se queda reintentando conectar en bucle sin decir por qué —
 confirmar este permiso es el primer paso si la Pico no conecta en la Pi 5.
+
+**Bug real encontrado y corregido en hardware real (23/08/2026): el buffer USB
+CDC de la Pico se desbordaba.** El firmware (`main.py`) imprime
+`Serial: LR=.., UD=..` por CADA comando que recibe, para depuración. Este lado
+solo escribía al puerto y nunca leía esa salida — el buffer USB CDC de la Pico
+(256 bytes) se llenaba en pocos segundos de rastreo activo, y `print()` en
+MicroPython **bloquea el firmware** cuando el buffer de salida está lleno: la
+Pico dejaba de procesar comandos nuevos, y los ojos se quedaban parados o con
+pequeños saltos — un síntoma que parecía un problema del rastreo (tardaba unos
+segundos en manifestarse) pero era enteramente de este lado. Confirmado con
+`cat /dev/ttyACM0` mostrando comandos viejos acumulados sin leer. Corregido
+con `_drenar_entrada()` (ver más abajo): leer y descartar la salida de la Pico
+mantiene su buffer vacío. Detalle completo:
+[`MODIFICACIONES-LOCALES.md`](MODIFICACIONES-LOCALES.md). **Regla general para
+cualquier firmware que imprima por serial:** su salida debe ser leída (y
+descartada, si no hace falta) por el cliente — un dispositivo USB CDC que "se
+muere a los pocos segundos de recibir datos" casi siempre tiene su buffer de
+salida lleno de algo que nadie lee.
 """
 
 import glob
@@ -152,6 +170,29 @@ class PicoLink:
             logger.warning(f"Escritura serial falló, se asume desconexión: {e}")
             self._conexion = None
 
+    def _drenar_entrada(self):
+        """Lee y descarta la salida que la Pico devuelve por el serial.
+
+        El firmware de la Pico (main.py) imprime `Serial: LR=.., UD=..` por
+        CADA comando que recibe. Si este lado nunca lee esa salida, el buffer
+        USB CDC de la Pico (256 bytes) se llena en pocos segundos y `print()`
+        BLOQUEA el firmware → deja de procesar comandos → los ojos se quedan
+        parados o van lentos con pequeños saltos (bug real encontrado en
+        hardware real el 23/08/2026: el rastreo "empezaba bien y moría a los
+        ~10s" — ver la cabecera del módulo).
+
+        Leer y descartar aquí mantiene el buffer de la Pico vacío. Es seguro
+        con cualquier serial_factory inyectado (los fakes de los tests pueden
+        no tener `in_waiting` → AttributeError, capturado)."""
+        if self._conexion is None:
+            return
+        try:
+            pendiente = self._conexion.in_waiting
+            if pendiente:
+                self._conexion.read(pendiente)
+        except Exception:
+            pass  # fakes de test sin in_waiting, o error puntual: ignorar
+
     def _run(self):
         ultimo_latido = 0.0
         while not self._detener.is_set():
@@ -166,6 +207,12 @@ class PicoLink:
                 self._conexion = None
                 continue
 
+            # CRÍTICO: drenar la salida que la Pico devuelve. El firmware imprime
+            # "Serial: LR=.." por cada comando recibido; si nadie la lee, el buffer
+            # USB CDC (256 B) se llena en segundos y print() bloquea la Pico → los
+            # ojos se quedan parados/lentos (bug real, 23/08/2026, ver cabecera).
+            self._drenar_entrada()
+
             try:
                 comando = self._queue.get(timeout=self._heartbeat_s)
             except queue.Empty:
@@ -174,6 +221,7 @@ class PicoLink:
             if comando:
                 self._escribir(comando)
                 ultimo_latido = time.monotonic()
+                self._drenar_entrada()  # la Pico responde al instante; vaciar ya
             else:
                 # Nada nuevo que enviar: si hay un último comando y toca latido, reenvía.
                 ahora = time.monotonic()
