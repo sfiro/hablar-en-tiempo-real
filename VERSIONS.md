@@ -329,6 +329,222 @@ validar que voz + sentimiento + expresión funcionan bien juntos.
 
 ---
 
+## v9.0.0 ✅ — Voz + sentimiento + rastreo facial real, todo junto (completa y validada en hardware real)
+
+**Objetivo:** juntar, en un solo proceso, las tres piezas validadas por
+separado hasta ahora: voz + sentimiento (v8) y rastreo facial real (v7).
+Alcance acotado: solo `webrtc_server.py` recibe la cámara — `realtime_voice.py`
+se queda igual que en v8.
+
+**Hito 1: Base funcional traída completa — COMPLETADO**
+- ✅ Copiado todo desde `v8/`, y retomado `face_tracker.py` desde `v7/`
+  (v8 no lo tenía a propósito), sin cambios de lógica
+
+**Hito 2: `webrtc_server.py` — rastreo facial real en un hilo de fondo — COMPLETADO Y VALIDADO EN HARDWARE REAL**
+- ✅ `_hilo_rastreo()`: hilo de fondo que lee la cámara vía `FaceTracker` y
+  llama a `PICO.enviar(lr, ud)` (sin EMOCION) cuando hay cambio significativo
+- ✅ `ULTIMA_MIRADA`: reemplaza el `90,90` fijo que usaba v8 — el endpoint de
+  sentimiento ahora manda la posición real junto con la emoción
+- ✅ Conexión a la Pico compartida: se abre si `--sentiment` o `--tracking`
+  están activos (antes solo dependía de `--sentiment`)
+- ✅ `main.py` (el firmware): sin cambios — ya aceptaba mirada real desde v4
+- ✅ **Bug real encontrado y corregido, no anticipado:** abrir la cámara
+  dentro del propio hilo de rastreo falla en macOS
+  (`"can not spin main run loop from other thread"` — AVFoundation necesita
+  el hilo principal para negociar el permiso de cámara). Corregido: la
+  cámara se abre en `main()` (hilo principal) y el objeto ya abierto se pasa
+  al hilo de fondo
+- ✅ **Validado por el usuario, con permiso de cámara concedido y una
+  conversación real:** "funciona bien, hace el tracking perfecto, y puedo
+  hablar en tiempo real" — rastreo real + sentimiento a la vez, sin
+  conflictos entre los dos hilos
+
+**Hito 3: Modo dormido por inactividad — COMPLETADO Y VALIDADO EN HARDWARE REAL**
+- ✅ Pedido explícito tras validar los Hitos 1-2: tras `--sleep-timeout`
+  segundos (60 por defecto) sin que el usuario hable, la Pico entra en
+  `DORMIDO`; al volver la actividad, se despierta con `DUDA` y de ahí pasa
+  sola a `NEUTRAL`
+- ✅ `main.py` (el firmware): sin cambios, otra vez — el modo dormido reusa
+  "la misma emoción repetida extiende el pulso" (ya probado desde v8) para
+  mantener `DORMIDO` indefinidamente, y el pulso normal de 5s para volver de
+  `DUDA` a `NEUTRAL` sin intervención adicional
+- ✅ Solo cuenta como actividad lo que dice el usuario, no el asistente —
+  decisión explícita
+- ✅ `_decidir_sueno()`: lógica pura, aislada de threading, con 5 tests
+  nuevos que la prueban directamente con valores de tiempo fijos
+- ✅ **Validado con hardware real:** `--sleep-timeout 4` confirmó la
+  secuencia completa (dormir tras el silencio, despertar con la primera
+  actividad) por los logs y el envío serial real a la Pico física
+
+79 tests en total. Detalle completo: [`v9/PLAN-v9.md`](v9/PLAN-v9.md).
+
+---
+
+## v10.0.0 🔄 — Todo lo de v9, en la Raspberry Pi 5 (código completo, validación en hardware pendiente)
+
+**Objetivo:** llevar la pila completa de v9 (voz por navegador + sentimiento +
+rastreo facial real + modo dormido) de un Mac a una **Raspberry Pi 5**, con
+micrófono y parlante USB. La Pico se mantiene sin cambios como controlador de
+servos — la Pi 5 sustituye al Mac como cliente, no a la Pico.
+
+**Decisión de arquitectura, con el usuario:** este proyecto ya tenía una
+especificación aparcada para Raspberry Pi 5 desde v1
+([`docs/RASPBERRY-PI.md`](docs/RASPBERRY-PI.md)) que elegía un enfoque
+headless (sin pantalla) con `realtime_voice.py` + cancelación de eco de
+PipeWire a nivel de sistema — pensado para el mismo hardware (micro y
+parlante USB independientes). Al planificar v10 se le presentó ese
+contraste al usuario explícitamente, y se decidió **no** seguir esa spec
+esta vez: v10 usa `webrtc_server.py` con Chromium corriendo en la propia Pi
+5 (necesita pantalla), igual que la vía recomendada en el resto de
+versiones, para no perder ninguna de las cuatro piezas de v9 de golpe. La
+spec de PipeWire sigue siendo válida como referencia si en el futuro se
+quiere una versión headless.
+
+**Hito 1: Base funcional traída completa — COMPLETADO**
+- ✅ Copiado todo desde `v9/`, sin cambios de lógica salvo lo descrito abajo
+- ✅ 79 tests heredados, corridos dentro de `v10/.venv` (73 pasan, 6 se
+  saltan por falta de `pysentimiento` en la máquina de desarrollo — sin
+  cambios respecto al criterio de v2 en adelante)
+
+**Hito 2: Cámara CSI en vez de la webcam del Mac — COMPLETADO EN CÓDIGO, sin hardware real**
+- ✅ `face_tracker.py`: `FaceTracker` (la lógica pura) sin cambios;
+  `abrir_camara_csi()`/`leer_frame()` nuevas, envuelven `picamera2` con el
+  mismo contrato `(ret, frame)` que tenía `cv2.VideoCapture.read()`
+- ✅ Import de `picamera2` diferido, para que los tests no lo necesiten
+  instalado — confirmado corriendo los 79 tests sin `picamera2` en este Mac
+- ✅ `webrtc_server.py`: mismo patrón defensivo de v9 (abrir la cámara en el
+  hilo principal, no en el de rastreo), documentado con honestidad como
+  "por consistencia", no como un bug confirmado en Linux (el bug real de
+  v9 era específico de AVFoundation/macOS)
+
+**Hito 3: Puerto serial de la Pico en Linux — COMPLETADO EN CÓDIGO, sin hardware real**
+- ✅ `encontrar_puerto_mac()` → `encontrar_puerto_pico()`: busca
+  `/dev/ttyACM*` en vez de los nombres de macOS
+- ✅ Documentado el requisito de grupo `dialout`, específico de Linux
+
+**Hito 4: Audio USB — decisión de arquitectura — COMPLETADO**
+- ✅ Ver "Decisión de arquitectura" arriba
+- ✅ Documentado en `README-v10.md` el setup de PipeWire/`wpctl` para fijar
+  el micro/parlante USB como dispositivos por defecto del sistema (los usan
+  tanto `getUserMedia` del navegador como `sounddevice` de
+  `realtime_voice.py`, sin tocar código)
+
+**Pendiente, el único punto que falta:**
+- [ ] **Validar con hardware real de la Raspberry Pi 5** — cámara CSI,
+  micro/parlante USB, Pico física, con una conversación hablada de verdad.
+  Este código se escribió sin ninguna de esas piezas delante; es la primera
+  versión de este proyecto que llega a este punto así.
+
+79 tests en total (heredados de v9, sin tests nuevos — no hay lógica nueva
+que probar sin hardware real). Detalle completo: [`v10/PLAN-v10.md`](v10/PLAN-v10.md).
+
+---
+
+## v11.0.0 ✅ — Solo conversación de voz, en la Raspberry Pi 5 (validada con conversación real, tres vías)
+
+**Objetivo:** versión paralela a v10, no un reemplazo ni un paso previo
+obligatorio. La cámara CSI que necesita v10 todavía no está disponible, así
+que v11 aísla la única pieza que sí se puede validar ya: la conversación de
+voz sola, sin sentimiento, sin rastreo facial, sin Pico — el alcance de v1,
+en la Raspberry Pi 5 en vez del Mac.
+
+**Hito 1: Copiar v1 sin cambios de lógica — COMPLETADO**
+- ✅ `webrtc_server.py`, `realtime_voice.py`, `static/index.html` copiados
+  de `v1/`, sin ningún cambio de lógica — v1 no tenía código específico de
+  macOS (ni la cámara ni la Pico entran en esta versión), a diferencia de
+  v10, que sí tuvo que adaptar ambas
+- ✅ Único cambio real: un comentario sobre certificados TLS que mencionaba
+  macOS, generalizado
+- ✅ `requirements.txt` ligero (sin torch/opencv/pyserial), `.env.example`
+  con el placeholder correcto
+- ✅ Sin `tests/`, igual que v1: no hay lógica pura nueva que testear sin
+  hardware real
+
+**Hito 2: Documentar el setup de audio de la Pi 5 — COMPLETADO**
+- ✅ Documentado Chromium en modo kiosk y `realtime_voice.py` como
+  alternativa sin pantalla
+
+**Hito 3: Validación en hardware real, vía terminal — COMPLETADO**
+- ✅ **Bug real encontrado y corregido: sample rate.** `realtime_voice.py`
+  fallaba con `paInvalidSampleRate` — la Realtime API pide 24kHz PCM, el
+  micro/parlante USB de esta Pi 5 solo aceptan 44.1/48kHz de forma nativa,
+  y PortAudio con ALSA no resamplea. Fijar el dispositivo por defecto de
+  PipeWire (`wpctl set-default`, lo único documentado en el Hito 2) no
+  bastaba, porque PortAudio abre ALSA directo sin pasar por PipeWire
+- ✅ **Solución real, sin tocar código:** un `~/.asoundrc` con un
+  `type plug` de ALSA por canal (resampling automático) — añadido
+  [`v11/asoundrc.example`](v11/asoundrc.example) como plantilla
+- ✅ **Aclarado un flag ya existente desde v1, pero subdocumentado:**
+  `--barge-in` es necesario para interrumpir por voz en `realtime_voice.py`
+  — sin él, solo Enter corta al asistente
+- ✅ **Confirmado con una conversación real:** `realtime_voice.py
+  --barge-in` conectó a la API, mantuvo una conversación completa en
+  español por el micro/parlante USB, y permitió interrumpir al asistente
+  hablando por encima
+
+**Hito 4: Validación en hardware real, vía navegador — COMPLETADO**
+- ✅ **Bug real encontrado: Chromium roto en esta Pi.** Chromium 149 no
+  carga ninguna página (local ni externa) — pila de red rota, errores
+  ANGLE/EGL con el display Xwayland. Causa raíz no investigada más allá
+  del síntoma; documentado como confirmado en esta Pi, no como defecto
+  general de Chromium en Pi 5. **Decisión de despliegue: usar Firefox**
+- ✅ **Bug real encontrado y corregido: WebRTC sin STUN.**
+  `static/index.html` creaba `RTCPeerConnection` sin `iceServers` → solo
+  candidatos host (IP local), inalcanzables para OpenAI → ICE nunca
+  conectaba pese a que la negociación SDP daba 200. Corregido añadiendo
+  STUN (Google + Twilio) y esperando `iceGatheringState === 'complete'`
+  antes de mandar el offer. `static/index.html` deja de ser copia de v1
+  sin cambios — primera vez que hizo falta tocarlo en esta versión
+- ✅ **Bug real menor, encontrado y corregido: query string en `do_GET`.**
+  Necesario para la autoconexión en modo kiosko (`?auto=1`, sin clic
+  humano) — `webrtc_server.py` no la soportaba, arreglado con
+  `urllib.parse.urlparse`
+- ✅ `start_browser.sh` / `stop_browser.sh`: scripts de operación de 1
+  comando, con espera activa de `ICE: connected` antes de confirmar
+- ✅ **Confirmado con una conversación real:** ICE conectado, audio
+  bidireccional, conversación fluida e interrupción por voz — validado
+  por el usuario (22/08/2026)
+
+**Hito 5: Sistema de arranque automático — COMPLETADO EN CÓDIGO, ciclo de reinicio sin validar**
+- ✅ `systemd/v11-webrtc.service`: unidad `systemd` para el servidor,
+  `Restart=always`, no depende de sesión gráfica
+- ✅ `autostart/v11-firefox-kiosk.desktop`: autostart de escritorio (XDG)
+  para Firefox en kiosko
+- ✅ `start_browser.sh` ampliado con autorreparación del perfil de
+  Firefox; `stop_browser.sh` ampliado para reconocer si el servidor lo
+  gestiona `systemd` (y pararlo de verdad con `systemctl stop`)
+- [ ] **Pendiente:** validar el ciclo completo de apagar/encender la Pi y
+  confirmar que queda conectada sola, sin tocar nada
+
+**Hito 6: Tercera vía — AEC real de PipeWire (`v11/pipewire-aec/`) — COMPLETADO, validado en hardware real**
+- ✅ `voice_chat.py`, escrito desde cero (no deriva de v1): usa
+  `parec`/`paplay` contra los nodos virtuales de `module-echo-cancel` de
+  PipeWire, con cancelación de eco real — el enfoque de la spec aparcada
+  `docs/RASPBERRY-PI.md`
+- ✅ **Hallazgo real:** cargar el módulo por `pipewire.conf.d` (la vía
+  "oficial") crashea en esta build; funciona por `pactl` (`aec-load.sh`).
+  Compensación de la deriva de reloj entre micro y parlante USB
+  independientes con `webrtc.extended_filter`/`delay_agnostic`
+- ✅ `voice-chat.service`: despliegue como servicio, `Restart=always`,
+  validado en `/home/pi/voice-chat/` (carpeta distinta de `/home/pi/v11/`)
+- ✅ **Bug encontrado y corregido:** `voice_rest.py` (script alternativo,
+  Whisper→GPT→TTS, no Realtime API) llegó con la lectura de
+  `OPENAI_API_KEY` corrompida por la exportación — reconstruida con el
+  mismo patrón que `voice_chat.py`, a petición explícita del usuario
+- ✅ **Confirmado con hardware real** por el usuario
+
+**Cómo se hizo:** el usuario delegó la implementación en hardware real a
+otro agente de código corriendo en la propia Pi 5, en tres rondas (terminal,
+navegador, y esta tercera vía con AEC de PipeWire); cada ronda documentó su
+proceso, y esa documentación se usó para corregir esta versión con los
+hallazgos reales, sin suponer nada no confirmado ahí.
+
+Sin tests nuevos (los bugs encontrados fueron de configuración de sistema o
+de comportamiento del navegador/PipeWire, no de lógica pura). Detalle
+completo: [`v11/PLAN-v11.md`](v11/PLAN-v11.md).
+
+---
+
 ## Política de versiones
 
 ### Ramas y tags
@@ -379,6 +595,9 @@ cd v2             # entra en v2
 | v6.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
 | v7.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) |
 | v8.0.0  | ✅ Completa y validada en conversación real | Raspberry Pi Pico (MicroPython) + Mac |
+| v9.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) + Mac + cámara |
+| v10.0.0 | 🔄 Código completo, falta validar en hardware real | Raspberry Pi Pico (MicroPython) + **Raspberry Pi 5** + cámara CSI |
+| v11.0.0 | ✅ Validada en hardware real (terminal, navegador y AEC PipeWire); falta el ciclo de autoarranque | **Raspberry Pi 5** (sin Pico ni cámara) |
 
 ---
 
@@ -394,4 +613,4 @@ Cada versión vive en su carpeta. Si quieres trabajar en v2 mientras otros usan 
 
 ---
 
-**Última actualización:** Agosto 8, 2026
+**Última actualización:** Agosto 22, 2026 (v11 validada en hardware real, tres vías)

@@ -1,0 +1,21 @@
+# Plantilla para ~/.asoundrc en la Raspberry Pi 5 — necesaria para
+# `realtime_voice.py` (sounddevice/PortAudio habla con ALSA directo, sin
+# pasar por el resampling de PipeWire). Ver README-v11.md, sección
+# "Instalación en la Raspberry Pi 5", para el porqué completo.
+#
+# Cómo usar:
+#   1. Identifica tus dispositivos:  aplay -l   (parlante)   arecord -l  (micro)
+#   2. Sustituye hw:2,0 y hw:3,0 por los tuyos (tarjeta,dispositivo)
+#   3. Copia este fichero a ~/.asoundrc:  cp asoundrc.example ~/.asoundrc
+
+pcm.!default {
+    type asym
+    playback.pcm {
+        type plug
+        slave.pcm "hw:2,0"   # tu parlante USB — ajusta según `aplay -l`
+    }
+    capture.pcm {
+        type plug
+        slave.pcm "hw:3,0"   # tu micrófono USB — ajusta según `arecord -l`
+    }
+}

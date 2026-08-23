@@ -1,0 +1,13 @@
+# v11/pipewire-aec — alternativa con cancelación de eco real de PipeWire.
+# Reconstruido a partir de los imports de voice_chat.py/voice_rest.py (no
+# venía un requirements.txt en la exportación original desde la Pi).
+#
+# A diferencia del resto del proyecto, voice_chat.py no usa sounddevice ni
+# certifi: captura/reproduce audio invocando `parec`/`paplay` (PipeWire) por
+# subprocess, y deja que `websockets` use el contexto SSL por defecto del
+# sistema en vez de forzar el bundle de certifi.
+websockets>=13.0
+numpy>=1.26
+
+# Solo para voice_rest.py (el ciclo Whisper→GPT→TTS, no la Realtime API).
+requests>=2.31

@@ -1,0 +1,11 @@
+# v11 — Solo conversación de voz en tiempo real, en la Raspberry Pi 5.
+# Copia de v1/requirements.txt, sin cambios: nada aquí es específico de Mac.
+# Sin torch/pysentimiento (sin sentimiento), sin opencv/picamera2 (sin
+# cámara), sin pyserial (sin Pico) — alcance deliberadamente mínimo, ver
+# README-v11.md.
+
+websockets>=13.0
+sounddevice>=0.4.7
+numpy>=1.26
+python-dotenv>=1.0
+certifi>=2024.2.2

@@ -1,0 +1,20 @@
+# v9 — Voz en tiempo real + análisis de emociones + rastreo facial real,
+# controlando la expresión y la mirada de la Pico. Autónomo: no depende de v1-v8.
+
+# Dependencias de v1/v2 (sin cambios)
+websockets>=13.0
+sounddevice>=0.4.7
+numpy>=1.26
+python-dotenv>=1.0
+certifi>=2024.2.2
+
+# De v2 (análisis de emociones): trae transformers y torch como dependencias.
+pysentimiento>=0.7.0
+
+# De v8: enlace serial hacia la Pico (pico_serial.py, copia de v8/v7/v6/v3).
+pyserial>=3.5
+
+# Nueva en v9: rastreo facial (face_tracker.py, retomado de v7). Fijado a la
+# serie 4.x: OpenCV 5.0 movió CascadeClassifier a opencv-contrib-python. Ver
+# CLAUDE.md para el detalle.
+opencv-python>=4.9.0,<5

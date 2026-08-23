@@ -1,0 +1,18 @@
+[Unit]
+Description=v11 - Servidor WebRTC (voz en tiempo real, Realtime API)
+# No pedimos una cámara ni una Pico (v11 no las usa) — solo red, para hablar con OpenAI.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/v11
+ExecStart=/home/pi/v11/.venv/bin/python webrtc_server.py --no-browser --verbose
+Restart=always
+RestartSec=3
+# stdout/stderr van al journal (journalctl -u v11-webrtc -f), no a /tmp/v11_webrtc.log
+# — ese fichero es solo del lanzamiento manual con start_browser.sh, no de este servicio.
+
+[Install]
+WantedBy=multi-user.target

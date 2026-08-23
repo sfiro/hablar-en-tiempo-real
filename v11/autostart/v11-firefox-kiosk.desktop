@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=v11 Voice Assistant (Firefox kiosk)
+Comment=Arranca el navegador en modo kiosko para la conversación de voz de v11
+Exec=/home/pi/v11/start_browser.sh
+X-GNOME-Autostart-enabled=true
+NoDisplay=true

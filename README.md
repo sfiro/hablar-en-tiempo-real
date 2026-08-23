@@ -16,7 +16,18 @@ completa y validada en hardware real (misma base de v6, junta el rastreo
 facial real con la secuencia de expresiones activa) · v8 completa y validada
 en conversación real (junta voz + sentimiento de v1/v2 con el firmware de
 v6/v7: la emoción detectada en la conversación controla la expresión facial;
-voz en el navegador por WebRTC, todavía sin rastreo facial — eso es v9).
+voz en el navegador por WebRTC, todavía sin rastreo facial — eso es v9) · v9
+completa y validada en hardware real (junta voz + sentimiento de v8 con el
+rastreo facial real de v7, en el mismo proceso; corregido un bug real de
+threading al abrir la cámara) · v10 código completo, validación en hardware
+pendiente (todo lo de v9, ahora en una Raspberry Pi 5 con cámara CSI y
+micro/parlante USB en vez del Mac) · v11 **validada con una conversación
+real en hardware real, por tres vías** (solo la conversación de voz
+—alcance de v1— en la Raspberry Pi 5; terminal con `--barge-in`, navegador
+con Firefox + STUN, y una tercera con cancelación de eco real de PipeWire;
+corregidos varios bugs reales de sample rate ALSA, Chromium roto en esta
+Pi, y WebRTC sin servidores STUN; añadido un sistema de arranque
+automático, sin validar todavía el ciclo completo de reinicio).
 
 ## 📦 Versiones disponibles
 
@@ -228,6 +239,117 @@ python realtime_voice.py --sentiment   # alternativa: terminal + Pico
 
 Ver [`v8/README-v8.md`](v8/README-v8.md) y [`v8/PLAN-v8.md`](v8/PLAN-v8.md).
 
+### [v9](v9/) — Voz + sentimiento + rastreo facial real, todo junto ✅ (completa y validada en hardware real)
+**Estado:** Junta, en el mismo proceso, las tres piezas validadas por
+separado hasta ahora: voz + sentimiento (v8) y rastreo facial real (v7).
+Alcance acotado: solo `webrtc_server.py` recibe la cámara — `realtime_voice.py`
+se queda igual que en v8, sin rastreo. Un hilo de fondo rastrea el rostro y
+manda su posición real a la Pico; el endpoint de sentimiento ahora manda esa
+misma posición real junto con la emoción, en vez del `90,90` fijo que usaba
+v8. `main.py` (el firmware) no cambió — ya aceptaba mirada real desde v4.
+
+**Bug real encontrado y corregido:** abrir la cámara dentro del hilo de
+rastreo falla en macOS (`"can not spin main run loop from other thread"` —
+AVFoundation necesita el hilo principal para negociar el permiso). Se
+resolvió abriendo la cámara en el hilo principal y pasando el objeto ya
+abierto al hilo de fondo. **Confirmado por el usuario, con permiso de cámara
+concedido y una conversación real:** "funciona bien, hace el tracking
+perfecto, y puedo hablar en tiempo real".
+
+**Añadido después, pedido explícito: modo dormido por inactividad.** Tras
+`--sleep-timeout` segundos (60 por defecto) sin que el usuario hable, la Pico
+entra en `DORMIDO`; al volver la actividad, se despierta con `DUDA` y de ahí
+pasa sola a `NEUTRAL` — sin ningún cambio en `main.py`, reutilizando que la
+misma emoción repetida extiende el pulso de 5s ya probado desde v8. Validado
+con hardware real (`--sleep-timeout 4`, para no esperar 60s).
+
+```bash
+cd v9 && source .venv/bin/activate
+python -m pytest tests/ -v                       # 79 tests
+python webrtc_server.py --sentiment --tracking    # las tres piezas juntas
+```
+
+Ver [`v9/README-v9.md`](v9/README-v9.md) y [`v9/PLAN-v9.md`](v9/PLAN-v9.md).
+
+### [v10](v10/) — Todo lo de v9, en la Raspberry Pi 5 🔄 (código completo, validación en hardware pendiente)
+**Estado:** Lleva la pila completa de v9 (voz por navegador + sentimiento +
+rastreo facial real + modo dormido) de un Mac a una **Raspberry Pi 5**, con
+cámara CSI (`picamera2`, en vez de la webcam del Mac) y micrófono/parlante
+USB. La Pico se mantiene sin cambios como controlador de servos — la Pi 5
+sustituye al Mac como cliente, no a la Pico. `FaceTracker` (la lógica de
+rastreo) no cambió ni una línea; solo cambió cómo se capturan los frames.
+
+**Decisión de arquitectura tomada con el usuario:** este proyecto ya tenía
+una especificación aparcada desde v1
+([`docs/RASPBERRY-PI.md`](docs/RASPBERRY-PI.md)) que proponía un enfoque
+headless (sin pantalla) con cancelación de eco a nivel de PipeWire. Se le
+presentó ese contraste al usuario, y v10 sigue en cambio con
+`webrtc_server.py` + Chromium en la propia Pi 5 (necesita pantalla), para no
+perder ninguna de las cuatro piezas de v9 de golpe — ver
+[`v10/README-v10.md`](v10/README-v10.md), sección "Por qué esta versión no
+sigue `docs/RASPBERRY-PI.md`".
+
+**Sin validar todavía en hardware real** — este código se escribió sin una
+Raspberry Pi 5, cámara CSI, ni Pico delante. Verificado hasta donde este
+entorno lo permite: sintaxis, 79 tests (73 pasan, 6 se saltan por falta de
+`pysentimiento`), y arranque real de `webrtc_server.py` degradando
+limpiamente sin `picamera2` instalado.
+
+```bash
+cd v10 && source .venv/bin/activate
+python -m pytest tests/ -v                       # 79 tests
+python webrtc_server.py --sentiment --tracking --no-browser &
+chromium-browser --kiosk http://localhost:8000
+```
+
+Ver [`v10/README-v10.md`](v10/README-v10.md) y [`v10/PLAN-v10.md`](v10/PLAN-v10.md).
+
+### [v11](v11/) — Solo conversación de voz, en la Raspberry Pi 5 ✅ (validada con conversación real, tres vías)
+**Estado:** Versión paralela a v10, no un reemplazo ni un requisito previo
+suyo. La cámara CSI que necesita v10 todavía no está disponible, así que
+v11 aísla la única pieza que sí se puede probar ya: la conversación de voz
+sola, sin sentimiento, sin rastreo facial, sin Pico — exactamente el
+alcance de v1, corriendo en la Raspberry Pi 5 en vez del Mac.
+
+`realtime_voice.py` es copia de v1 sin ningún cambio de lógica.
+`webrtc_server.py` y `static/index.html` sí necesitaron cambios reales,
+encontrados al validar en hardware.
+
+**Validada con una conversación real en la Raspberry Pi 5 del usuario, por
+las dos vías.** Cuatro bugs reales encontrados y corregidos en el proceso:
+(1) sample rate — la Realtime API pide 24kHz PCM, el hardware USB solo
+acepta 44.1/48kHz nativo, y PortAudio no resamplea con ALSA directo; fix
+sin tocar código, un `~/.asoundrc` con resampling (plantilla en
+[`v11/asoundrc.example`](v11/asoundrc.example)); (2) **Chromium 149 tiene
+la pila de red rota en esta Pi** (no carga ninguna página) — se usa
+Firefox en su lugar; (3) `static/index.html` creaba WebRTC sin servidores
+STUN, así que ICE nunca conectaba con OpenAI — corregido añadiendo STUN;
+(4) el servidor no soportaba query string en la URL, necesaria para la
+autoconexión en modo kiosko — corregido con `urllib.parse.urlparse`.
+
+Ahora incluye un **sistema de arranque automático** (`systemd` para el
+servidor, autostart de escritorio para Firefox) para que la Pi 5 quede
+lista al encenderse — código completo, sin validar todavía el ciclo
+completo de apagar/encender la Pi.
+
+Hay además una **tercera vía**, en [`v11/pipewire-aec/`](v11/pipewire-aec/):
+`voice_chat.py`, escrito desde cero (no deriva de v1), con **cancelación de
+eco real de PipeWire** en vez de los paliativos de `BargeInDetector` — el
+enfoque de la spec aparcada [`docs/RASPBERRY-PI.md`](docs/RASPBERRY-PI.md).
+También validada con hardware real, pero desplegada en
+`/home/pi/voice-chat/`, una carpeta distinta de `/home/pi/v11/`.
+
+```bash
+cd v11
+cp asoundrc.example ~/.asoundrc   # y ajusta los hw:X,Y a tu hardware (aplay -l / arecord -l)
+source .venv/bin/activate
+python realtime_voice.py --barge-in       # vía terminal, validada
+# o
+./start_browser.sh                        # vía navegador (Firefox), validada, 1 comando
+```
+
+Ver [`v11/README-v11.md`](v11/README-v11.md) y [`v11/PLAN-v11.md`](v11/PLAN-v11.md).
+
 ## 📚 Documentación
 
 - [CLAUDE.md](CLAUDE.md) — contexto técnico completo del proyecto (para trabajar en el código)
@@ -240,40 +362,57 @@ Ver [`v8/README-v8.md`](v8/README-v8.md) y [`v8/PLAN-v8.md`](v8/PLAN-v8.md).
 - [v6/README-v6.md](v6/README-v6.md) · [v6/PLAN-v6.md](v6/PLAN-v6.md)
 - [v7/README-v7.md](v7/README-v7.md) · [v7/PLAN-v7.md](v7/PLAN-v7.md)
 - [v8/README-v8.md](v8/README-v8.md) · [v8/PLAN-v8.md](v8/PLAN-v8.md)
-- [docs/RASPBERRY-PI.md](docs/RASPBERRY-PI.md) — especificación para Pi 5, aparcada
+- [v9/README-v9.md](v9/README-v9.md) · [v9/PLAN-v9.md](v9/PLAN-v9.md)
+- [v10/README-v10.md](v10/README-v10.md) · [v10/PLAN-v10.md](v10/PLAN-v10.md)
+- [v11/README-v11.md](v11/README-v11.md) · [v11/PLAN-v11.md](v11/PLAN-v11.md)
+- [docs/RASPBERRY-PI.md](docs/RASPBERRY-PI.md) — especificación headless para Pi 5
+  (aparcada; v10 y v11 tomaron un camino distinto — con navegador, no headless —
+  ver [v10/README-v10.md](v10/README-v10.md))
 
 ## 🔧 Requisitos
 
 - Python 3.9+
 - Clave de API de OpenAI con acceso a la Realtime API
-- Micrófono y altavoces (v1/v2/v8) — cámara adicional para v3/v4/v5/v6/v7
-  (v8 todavía no usa cámara, a propósito — ver v8/README-v8.md)
-- v2, v3 y v8 instalan `pysentimiento` (torch + transformers): ~2GB, varios
-  minutos la primera vez. **v4, v5, v6 y v7 no** — son mucho más ligeros (solo
-  `opencv-python` + `pyserial`), porque no tocan voz ni sentimiento
-- `main.py`/`estado_base.py` de v4/v5/v6/v7/v8 son firmware MicroPython:
-  necesitan la Raspberry Pi Pico física; el resto es Python normal de Mac
+- Micrófono y altavoces (v1/v2/v8/v9) — cámara adicional para v3/v4/v5/v6/v7/v9
+  (v8 no usa cámara, a propósito — ver v8/README-v8.md)
+- v2, v3, v8, v9 y v10 instalan `pysentimiento` (torch + transformers): ~2GB,
+  varios minutos la primera vez (más lento aún en la Pi 5 — ver
+  v10/requirements.txt). **v4, v5, v6 y v7 no** — son mucho más ligeros
+  (solo `opencv-python` + `pyserial`), porque no tocan voz ni sentimiento
+- `main.py`/`estado_base.py` de v4/v5/v6/v7/v8/v9/v10 son firmware
+  MicroPython: necesitan la Raspberry Pi Pico física; el resto es Python
+  normal (de Mac en v1-v9, de una Raspberry Pi 5 en v10)
+- **v10 además necesita:** una Raspberry Pi 5 con cámara CSI, micrófono y
+  parlante USB, y pantalla + Chromium (para la cancelación de eco real del
+  navegador) — ver [`v10/README-v10.md`](v10/README-v10.md), sección
+  "Instalación en la Raspberry Pi 5"
+- **v11 necesita lo mismo que v10, salvo la cámara:** Raspberry Pi 5 con
+  micrófono/parlante USB y pantalla + Chromium — sin `picamera2` ni
+  `opencv-python`, no toca cámara. La versión pensada para probarse primero,
+  mientras no llega la cámara de v10
 
 ## 📋 Comparativa de versiones
 
-| | v1 | v2 | v3 | v4 | v5 | v6 | v7 | v8 |
-|---|---|---|---|---|---|---|---|---|
-| Dónde corre | Mac | Mac | Mac | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** |
-| Voz en tiempo real | ✅ | ✅ (hereda de v1) | ✅ (hereda de v2) | — (a propósito) | — (a propósito) | — (a propósito) | — (a propósito) | ✅ (hereda de v2) |
-| Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 | n/a | n/a | n/a | n/a | igual que v1 |
-| Análisis de emociones | — | ✅ `pysentimiento`, en consola | ✅ (hereda de v2) | — | — | — | — | ✅ (hereda de v2) |
-| Rastreo facial (ojos) | — | — | 🔄 falta cámara real | ✅ validado en real | ✅ (hereda de v4) | ✅ (hereda de v5) | ✅ (hereda de v6) | — (a propósito, ver v9) |
-| Cuello (PAN/TILT) | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) | ✅ (hereda de v6/v7) |
-| Parpadeo | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) | ✅ (hereda de v6/v7) |
-| Utilidad de estado base | — | — | — | — | — | ✅ validada en real | ✅ (hereda de v6) | ✅ (hereda de v6/v7) |
-| Expresiones faciales | — | — | — | — | — | ✅ secuencia fija, validada en real | ✅ (hereda de v6) | ✅ dirigidas por sentimiento (pulso 5s) |
-| Rastreo real + expresiones a la vez | — | — | — | — | — | — | ✅ validado en real | n/a (sin rastreo aún) |
-| Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada |
+| | v1 | v2 | v3 | v4 | v5 | v6 | v7 | v8 | v9 | v10 | v11 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Dónde corre | Mac | Mac | Mac | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** | **Raspberry Pi 5** + **la Pico** | **Raspberry Pi 5** (sin Pico) |
+| Voz en tiempo real | ✅ | ✅ (hereda de v1) | ✅ (hereda de v2) | — (a propósito) | — (a propósito) | — (a propósito) | — (a propósito) | ✅ (hereda de v2) | ✅ (hereda de v8) | ✅ (hereda de v9) | ✅ validado en real (terminal, `--barge-in`) |
+| Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 | n/a | n/a | n/a | n/a | igual que v1 | igual que v1 | igual que v1 (Chromium en la Pi 5) | Validada 3 formas: Firefox+STUN, `BargeInDetector`, y AEC real de PipeWire |
+| Análisis de emociones | — | ✅ `pysentimiento`, en consola | ✅ (hereda de v2) | — | — | — | — | ✅ (hereda de v2) | ✅ (hereda de v8) | ✅ (hereda de v9) | — (a propósito, ver v11) |
+| Rastreo facial (ojos) | — | — | 🔄 falta cámara real | ✅ validado en real | ✅ (hereda de v4) | ✅ (hereda de v5) | ✅ (hereda de v6) | — (a propósito, ver v9) | ✅ validado en real | 🔄 cámara CSI, código completo | — (a propósito, ver v11) |
+| Cuello (PAN/TILT) | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | n/a (sin Pico) |
+| Parpadeo | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | n/a (sin Pico) |
+| Utilidad de estado base | — | — | — | — | — | ✅ validada en real | ✅ (hereda de v6) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | n/a (sin Pico) |
+| Expresiones faciales | — | — | — | — | — | ✅ secuencia fija, validada en real | ✅ (hereda de v6) | ✅ dirigidas por sentimiento (pulso 5s) | ✅ (hereda de v8) | ✅ (hereda de v8) | n/a (sin Pico) |
+| Modo dormido por inactividad | — | — | — | — | — | — | — | — | ✅ validado en real | ✅ (hereda de v9) | n/a (sin Pico) |
+| Rastreo real + expresiones a la vez | — | — | — | — | — | — | ✅ validado en real | n/a (sin rastreo aún) | ✅ validado en real | 🔄 código completo | n/a |
+| Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | 🔄 Código completo, validación pendiente (bloqueada por la cámara) | ✅ Validada (terminal y navegador); falta el ciclo de autoarranque |
 
 **Nota sobre independencia:** cada carpeta de versión tiene sus propias copias de
 cualquier código que reutilice de otra (nunca lo importa con una ruta cruzada). Por
-eso `pico_serial.py` existe, idéntico, en `v3/` a `v8/`, y `face_tracker.py` en
-`v3/` a `v7/` (v8 no lo incluye: no rastrea el rostro todavía, a propósito). Puedes
+eso `pico_serial.py` existe, con la misma lógica, de `v3/` a `v10/` (adaptado a
+Linux en v10, ver más abajo), y `face_tracker.py` en `v3/` a `v7/`, en `v9/` y en
+`v10/` (v8 no lo incluye: no rastreaba el rostro todavía, a propósito). Puedes
 borrar cualquier carpeta de versión anterior y las demás siguen funcionando.
 
 ## 📖 Estructura del proyecto
@@ -345,8 +484,46 @@ borrar cualquier carpeta de versión anterior y las demás siguen funcionando.
 │   ├── tests/              # 65 tests
 │   ├── README-v8.md
 │   └── PLAN-v8.md
+├── v9/                     # Voz + sentimiento + rastreo facial real, todo junto
+│   ├── main.py             # Copia de v8, sin cambios (ya aceptaba mirada real)
+│   ├── webrtc_server.py    # v8 + hilo de rastreo, --tracking, ULTIMA_MIRADA
+│   ├── face_tracker.py     # Retomado de v7, sin cambios de lógica
+│   ├── static/index.html   # Copia de v8, sin cambios
+│   ├── realtime_voice.py   # Copia de v8, sin cambios (sin rastreo, alcance acotado)
+│   ├── sentiment_analyzer.py # Copia autónoma de v8, sin cambios
+│   ├── pico_serial.py      # Copia autónoma de v8, sin cambios
+│   ├── estado_base.py      # Copia autónoma de v8, sin cambios
+│   ├── diagnostico_canal.py # Copia autónoma de v8, sin cambios
+│   ├── tests/              # 79 tests
+│   ├── README-v9.md
+│   └── PLAN-v9.md
+├── v10/                    # Todo lo de v9, en la Raspberry Pi 5 (cliente, no la Pico)
+│   ├── main.py             # Copia de v9, sin cambios (firmware, no depende del cliente)
+│   ├── webrtc_server.py    # v9 + cámara vía Picamera2 en vez de cv2.VideoCapture
+│   ├── face_tracker.py     # FaceTracker sin cambios; abrir_camara_csi()/leer_frame() nuevas
+│   ├── pico_serial.py      # encontrar_puerto_pico(): /dev/ttyACM* en vez de macOS
+│   ├── static/index.html   # Copia de v9, sin cambios
+│   ├── realtime_voice.py   # Copia de v9 + encontrar_puerto_pico(), sin rastreo (alcance acotado)
+│   ├── sentiment_analyzer.py # Copia autónoma de v9, sin cambios
+│   ├── estado_base.py      # Copia autónoma de v9, sin cambios
+│   ├── diagnostico_canal.py # Copia autónoma de v9, sin cambios
+│   ├── tests/              # 79 tests
+│   ├── README-v10.md       # Incluye el setup de hardware de la Pi 5 (cámara, audio, permisos)
+│   └── PLAN-v10.md
+├── v11/                    # Solo conversación de voz, VALIDADA en la Pi 5 (paralela a v10)
+│   ├── webrtc_server.py    # Copia de v1 + fix de query string (urlparse) + 127.0.0.1
+│   ├── realtime_voice.py   # Copia de v1, sin cambios (validada: --barge-in)
+│   ├── static/index.html   # Reescrita: STUN + autoconexión (?auto=1) + diagnóstico ICE
+│   ├── asoundrc.example    # Plantilla del fix real de sample rate (ALSA resampling)
+│   ├── firefox-profile/user.js  # Perfil de Firefox para el kiosko
+│   ├── start_browser.sh / stop_browser.sh  # Scripts de operación (1 comando), validados
+│   ├── systemd/v11-webrtc.service          # Autostart del servidor
+│   ├── autostart/v11-firefox-kiosk.desktop # Autostart de Firefox en kiosko
+│   ├── pipewire-aec/       # 3ª vía: AEC real de PipeWire, escrita desde cero
+│   ├── README-v11.md       # Por qué existe junto a v10, hallazgos de la validación real
+│   └── PLAN-v11.md
 ├── docs/
-│   └── RASPBERRY-PI.md     # Especificación técnica, aparcada
+│   └── RASPBERRY-PI.md     # Especificación headless, aparcada (v10/v11 tomaron otro camino)
 ├── CLAUDE.md               # Contexto técnico completo del proyecto
 ├── VERSIONS.md             # Hoja de ruta
 └── README.md               # Este fichero
@@ -354,8 +531,10 @@ borrar cualquier carpeta de versión anterior y las demás siguen funcionando.
 
 Cada versión es independiente: su propio venv, requirements y documentación, y sus
 propias copias de cualquier código reutilizado de otra versión (nunca imports entre
-carpetas). v1 no cambia mientras se trabaja en v2, v3, v4, v5, v6, v7 o v8, y puedes
-borrar cualquier versión anterior sin romper las demás.
+carpetas). v1 no cambia mientras se trabaja en v2, v3, v4, v5, v6, v7, v8, v9, v10 o
+v11, y puedes borrar cualquier versión anterior sin romper las demás. v11 es una
+excepción curiosa: es una copia de v1 (no de la versión inmediatamente anterior),
+paralela a v10, no una continuación suya — ver la sección de v11 más arriba.
 
 ## ❓ FAQ
 
@@ -380,4 +559,4 @@ ahí, en vez de reinventarlos. Ver [`v3/README-v3.md`](v3/README-v3.md).
 
 ---
 
-**Última actualización:** Agosto 4, 2026
+**Última actualización:** Agosto 22, 2026 (v11 validada en hardware real, tres vías)

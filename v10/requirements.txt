@@ -1,0 +1,44 @@
+# v10 — Voz en tiempo real + análisis de emociones + rastreo facial real,
+# controlando la expresión y la mirada de la Pico. Autónomo: no depende de v1-v9.
+# Cliente: Raspberry Pi 5 (ARM64), no Mac — ver README-v10.md.
+
+# Dependencias de v1/v2 (sin cambios): usadas por realtime_voice.py (la
+# alternativa de terminal). webrtc_server.py, la vía recomendada, no toca
+# audio en Python en absoluto — el navegador habla directo con OpenAI.
+websockets>=13.0
+sounddevice>=0.4.7
+numpy>=1.26
+python-dotenv>=1.0
+certifi>=2024.2.2
+
+# De v2 (análisis de emociones): trae transformers y torch como dependencias.
+# En un Pi 5 (ARM64) la instalación es bastante más pesada y lenta que en un
+# Mac — cuenta con varios minutos y, según la RAM disponible (4GB va justo,
+# 8GB/16GB va bien), puede necesitar swap temporal durante el pip install.
+pysentimiento>=0.7.0
+
+# Enlace serial hacia la Pico (pico_serial.py).
+pyserial>=3.5
+
+# Rastreo facial (face_tracker.py): la lógica de FaceTracker (Haar cascade,
+# resize, color) sigue siendo OpenCV puro, igual que en v9. Fijado a la serie
+# 4.x: OpenCV 5.0 movió CascadeClassifier a opencv-contrib-python. Ver
+# CLAUDE.md para el detalle. Hay wheels de opencv-python para ARM64/manylinux,
+# así que este paquete SÍ se instala por pip sin diferencias respecto a un Mac.
+opencv-python>=4.9.0,<5
+
+# --- NO en este fichero: picamera2 -----------------------------------------
+# La captura de la cámara CSI (abrir_camara_csi() en face_tracker.py) usa
+# picamera2, el binding oficial de Raspberry Pi para libcamera. A propósito no
+# está aquí como línea de pip: picamera2 depende de las bibliotecas de sistema
+# de libcamera (compiladas para la Pi, no distribuidas como wheel manylinux
+# genérico) y la propia documentación de Raspberry Pi recomienda instalarlo
+# vía apt, no vía pip. Instálalo así, ANTES de crear el venv:
+#
+#   sudo apt update
+#   sudo apt install -y python3-picamera2 --no-install-recommends
+#
+# y crea el venv con --system-site-packages para que vea el paquete instalado
+# por apt (si el venv ya existe sin esa opción, hay que rehacerlo — no hay
+# forma de añadir la opción a uno existente). Detalle completo en
+# README-v10.md, sección "Instalación en la Raspberry Pi 5".
