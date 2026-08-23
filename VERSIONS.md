@@ -505,16 +505,22 @@ en la Raspberry Pi 5 en vez del Mac.
   bidireccional, conversación fluida e interrupción por voz — validado
   por el usuario (22/08/2026)
 
-**Hito 5: Sistema de arranque automático — COMPLETADO EN CÓDIGO, ciclo de reinicio sin validar**
+**Hito 5: Sistema de arranque automático — INSTALADO Y ACTIVO EN LA PI REAL (23/08), ciclo de reinicio sin confirmar**
 - ✅ `systemd/v11-webrtc.service`: unidad `systemd` para el servidor,
-  `Restart=always`, no depende de sesión gráfica
+  `Restart=always`, no depende de sesión gráfica — **instalada, `enable`d
+  y corriendo** en la Pi real, escucha en `127.0.0.1:8000` desde el
+  arranque (`journalctl -u v11-webrtc -f`)
 - ✅ `autostart/v11-firefox-kiosk.desktop`: autostart de escritorio (XDG)
-  para Firefox en kiosko
+  para Firefox en kiosko — **copiado a `~/.config/autostart/`** en la Pi
 - ✅ `start_browser.sh` ampliado con autorreparación del perfil de
   Firefox; `stop_browser.sh` ampliado para reconocer si el servidor lo
   gestiona `systemd` (y pararlo de verdad con `systemctl stop`)
-- [ ] **Pendiente:** validar el ciclo completo de apagar/encender la Pi y
-  confirmar que queda conectada sola, sin tocar nada
+- ✅ **Hallazgo real, 23/08:** `~/.asoundrc` puede desaparecer (le pasó a
+  esta Pi durante la sincronización con GitHub, causa no diagnosticada) —
+  sin autorreparación; si desaparece, recrearlo a mano
+  (`cp asoundrc.example ~/.asoundrc`)
+- [ ] **Pendiente:** confirmar explícitamente el ciclo completo de
+  apagar/encender la Pi de punta a punta
 
 **Hito 6: Tercera vía — AEC real de PipeWire (`v11/pipewire-aec/`) — COMPLETADO, validado en hardware real**
 - ✅ `voice_chat.py`, escrito desde cero (no deriva de v1): usa
@@ -597,7 +603,7 @@ cd v2             # entra en v2
 | v8.0.0  | ✅ Completa y validada en conversación real | Raspberry Pi Pico (MicroPython) + Mac |
 | v9.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) + Mac + cámara |
 | v10.0.0 | 🔄 Código completo, falta validar en hardware real | Raspberry Pi Pico (MicroPython) + **Raspberry Pi 5** + cámara CSI |
-| v11.0.0 | ✅ Validada en hardware real (terminal, navegador y AEC PipeWire); falta el ciclo de autoarranque | **Raspberry Pi 5** (sin Pico ni cámara) |
+| v11.0.0 | ✅ Validada en hardware real (terminal, navegador y AEC PipeWire); autoarranque instalado y activo, ciclo completo sin confirmar | **Raspberry Pi 5** (sin Pico ni cámara) |
 
 ---
 
@@ -613,4 +619,4 @@ Cada versión vive en su carpeta. Si quieres trabajar en v2 mientras otros usan 
 
 ---
 
-**Última actualización:** Agosto 22, 2026 (v11 validada en hardware real, tres vías)
+**Última actualización:** Agosto 23, 2026 (v11: arranque automático instalado en la Pi real)

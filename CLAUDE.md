@@ -167,9 +167,11 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
   por navegador (Firefox + kiosko + autoconexión). Añadido después, a
   petición del usuario: un sistema de arranque automático (`systemd` para
   el servidor, autostart de escritorio XDG para Firefox) para que la Pi 5
-  quede lista al encenderse — código completo, **sin validar todavía el
-  ciclo completo de apagar/encender**, que es el único punto que queda
-  abierto en esta versión. Existe además una **tercera vía**, en
+  quede lista al encenderse — instalado y activo en la Pi real desde el
+  23/08 (`v11-webrtc.service` corriendo, autostart de Firefox copiado),
+  aunque el ciclo completo de apagar/encender de punta a punta sigue sin
+  confirmarse explícitamente, que es el único punto que queda abierto en
+  esta versión. Existe además una **tercera vía**, en
   [`v11/pipewire-aec/`](v11/pipewire-aec/), escrita desde cero (no deriva de
   v1) con cancelación de eco real de PipeWire — el enfoque de la spec
   aparcada `docs/RASPBERRY-PI.md` — también validada con hardware real, pero
@@ -936,8 +938,19 @@ amplió con un paso de autorreparación del perfil de Firefox (lo recrea si
 `/tmp` se limpió), y `stop_browser.sh` con reconocimiento de si el
 servidor lo gestiona `systemd` (para pararlo de verdad con `systemctl
 stop`, en vez de un `kill` que `Restart=always` deshace al instante).
-**Código completo, sin validar todavía el ciclo completo de apagar y
-encender la Pi** — es el único punto que queda abierto en esta versión.
+**Actualización 23/08/2026, instalado y activo en la Pi real:**
+`v11-webrtc.service` corriendo (`enable`d, escucha en `127.0.0.1:8000`
+desde el arranque) y el autostart de Firefox copiado a
+`~/.config/autostart/`. Sigue sin confirmarse explícitamente el ciclo
+completo de apagar/encender de punta a punta — es el único punto que
+queda abierto en esta versión. Hallazgo real del mismo día: `~/.asoundrc`
+puede desaparecer (le pasó a esta Pi durante una sincronización con
+GitHub, causa no diagnosticada) — sin autorreparación, hay que recrearlo
+a mano si `realtime_voice.py` vuelve a fallar con `paInvalidSampleRate`.
+Todo esto documentado en detalle, con los comandos exactos usados, en
+[`v11/README-IMPLEMENTACION.md`](v11/README-IMPLEMENTACION.md) — el
+diario de implementación del otro agente, subido al repo en esta sesión
+(hasta ahora solo vivía localmente en la Pi).
 **Tercera vía, también validada en hardware real:**
 [`v11/pipewire-aec/`](v11/pipewire-aec/) — `voice_chat.py`, escrito desde
 cero (no deriva de v1), con cancelación de eco real de PipeWire

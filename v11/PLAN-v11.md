@@ -117,7 +117,7 @@ real) de punta a punta con una conversación hablada de verdad.
 configuración de sistema (Chromium/Firefox) o de comportamiento del
 navegador (STUN, query string), no de lógica pura testeable sin hardware.
 
-## Hito 5: Sistema que arranca solo (autostart) ✅ (completo en código, sin validar el ciclo completo de reinicio)
+## Hito 5: Sistema que arranca solo (autostart) ✅ (instalado y activo en la Pi real, ciclo completo de reinicio sin confirmar explícitamente)
 
 **Objetivo, pedido explícito del usuario tras validar la vía navegador:**
 que la Pi 5 quede lista para conversar en cuanto se enciende, sin
@@ -136,9 +136,21 @@ intervención manual.
       `systemd` (en cuyo caso `systemctl stop`, no un `kill` que
       `Restart=always` deshace al instante) o si corre suelto (`kill`
       manual, como antes)
-- [ ] **Pendiente: validar el ciclo completo** — apagar la Pi, encenderla,
-      y confirmar que queda conectada sola, sin tocar nada. Es el único
-      punto de esta versión que no se ha probado de verdad todavía.
+- [x] **Actualización 23/08/2026:** instalado en la Pi real —
+      `v11-webrtc.service` está `enable`d y corriendo (escucha en
+      `127.0.0.1:8000` desde el arranque, log por `journalctl -u
+      v11-webrtc -f`), y la entrada de autostart de Firefox está en
+      `~/.config/autostart/`. Ver
+      [`README-IMPLEMENTACION.md`](README-IMPLEMENTACION.md), sección 11
+- [ ] **Sigue pendiente:** confirmar explícitamente el ciclo completo de
+      apagar/encender la Pi de punta a punta. Es el único punto de esta
+      versión que no se ha probado así de verdad todavía
+- [x] **Hallazgo real, 23/08:** `~/.asoundrc` puede desaparecer (le pasó a
+      esta Pi ese día durante la sincronización con GitHub, causa no
+      diagnosticada) — sin autorreparación como la del perfil de Firefox;
+      si desaparece, `realtime_voice.py` vuelve a fallar con
+      `paInvalidSampleRate` hasta recrearlo a mano
+      (`cp asoundrc.example ~/.asoundrc`)
 
 ## Hito 6: Tercera vía — AEC real de PipeWire (`pipewire-aec/`) ✅ (validada en hardware real, en una ubicación distinta)
 
@@ -202,19 +214,23 @@ v11.0.0 está lista cuando:
 5. [x] **Validada con hardware real, tercera vía (AEC real de PipeWire)** —
    `pipewire-aec/voice_chat.py`, corriendo como servicio en
    `/home/pi/voice-chat/`.
-6. [ ] **Arranque automático de punta a punta** (vía navegador) — apagar,
-   encender, y que quede listo sin tocar nada. Único punto pendiente.
+6. [x] **Arranque automático instalado y activo** (vía navegador) —
+   `v11-webrtc.service` corriendo, autostart de Firefox instalado (23/08).
+   [ ] Sigue pendiente confirmar explícitamente el ciclo completo de
+   apagar/encender de punta a punta. Único punto que queda abierto.
 
 ---
 
-**Última actualización:** Agosto 22, 2026
+**Última actualización:** Agosto 23, 2026
 **Estado actual:** v11.0.0 **validada con una conversación real en
 hardware real, por las tres vías** (terminal con `--barge-in`, navegador
 con Firefox + STUN, y una tercera con AEC real de PipeWire). Cuatro bugs
 reales encontrados y corregidos en el proceso de las dos primeras vías
 (sample rate, Chromium roto en esta Pi → Firefox, WebRTC sin STUN, query
 string en `do_GET`), más uno más en la tercera (lectura de API key
-corrompida en `voice_rest.py`, reconstruida). Añadido un sistema de
-arranque automático (`systemd` + autostart de escritorio) para la vía
-navegador, sin validar todavía el ciclo completo de reinicio. Queda
-abierta solo por ese último punto.
+corrompida en `voice_rest.py`, reconstruida). Sistema de arranque
+automático (`systemd` + autostart de escritorio) instalado y corriendo en
+la Pi real desde el 23/08; un hallazgo real de ese día — `~/.asoundrc`
+puede desaparecer, sin autorreparación, hay que recrearlo a mano. Queda
+abierta solo por confirmar el ciclo completo de apagar/encender de punta
+a punta.

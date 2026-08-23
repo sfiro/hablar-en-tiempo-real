@@ -328,9 +328,11 @@ STUN, así que ICE nunca conectaba con OpenAI — corregido añadiendo STUN;
 autoconexión en modo kiosko — corregido con `urllib.parse.urlparse`.
 
 Ahora incluye un **sistema de arranque automático** (`systemd` para el
-servidor, autostart de escritorio para Firefox) para que la Pi 5 quede
-lista al encenderse — código completo, sin validar todavía el ciclo
-completo de apagar/encender la Pi.
+servidor, autostart de escritorio para Firefox), instalado y activo en la
+Pi real desde el 23/08 — sigue sin confirmarse explícitamente el ciclo
+completo de apagar/encender de punta a punta. Detalle completo, con los
+comandos exactos usados en la Pi, en
+[`v11/README-IMPLEMENTACION.md`](v11/README-IMPLEMENTACION.md).
 
 Hay además una **tercera vía**, en [`v11/pipewire-aec/`](v11/pipewire-aec/):
 `voice_chat.py`, escrito desde cero (no deriva de v1), con **cancelación de
@@ -521,6 +523,7 @@ borrar cualquier carpeta de versión anterior y las demás siguen funcionando.
 │   ├── autostart/v11-firefox-kiosk.desktop # Autostart de Firefox en kiosko
 │   ├── pipewire-aec/       # 3ª vía: AEC real de PipeWire, escrita desde cero
 │   ├── README-v11.md       # Por qué existe junto a v10, hallazgos de la validación real
+│   ├── README-IMPLEMENTACION.md  # Diario de implementación en la Pi real (17/08, 22/08, 23/08)
 │   └── PLAN-v11.md
 ├── docs/
 │   └── RASPBERRY-PI.md     # Especificación headless, aparcada (v10/v11 tomaron otro camino)
@@ -559,4 +562,4 @@ ahí, en vez de reinventarlos. Ver [`v3/README-v3.md`](v3/README-v3.md).
 
 ---
 
-**Última actualización:** Agosto 22, 2026 (v11 validada en hardware real, tres vías)
+**Última actualización:** Agosto 23, 2026 (v11: arranque automático instalado en la Pi real)

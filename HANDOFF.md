@@ -1,15 +1,20 @@
 # Handoff — Hablar en tiempo real
 
 **Fecha:** 23 de agosto de 2026
+**Repositorio en GitHub:** https://github.com/sfiro/hablar-en-tiempo-real
+(público). v9, v10, v11 y toda la documentación actualizada ya están
+commiteadas y subidas — ver sección 4 para el detalle de cómo se hizo
+(auditoría de secretos, instalación de `gh` sin Homebrew, autenticación
+con token).
 **Última versión activa:** v11 — **validada con una conversación real en
 la Raspberry Pi 5 del usuario, por tres vías** (terminal con
 `realtime_voice.py --barge-in`; navegador con `webrtc_server.py` + Firefox
 en kiosko; y una tercera con cancelación de eco real de PipeWire, escrita
-desde cero, en `v11/pipewire-aec/`). Incluye un sistema de arranque
-automático (`systemd` + autostart de escritorio) para la vía navegador, sin
-validar todavía el ciclo completo de apagar/encender. v10 sigue bloqueada
-por falta de la cámara CSI; v9 completa y validada en hardware real (Mac).
-Ninguna de las tres (v9, v10, v11) está commiteada todavía.
+desde cero, en `v11/pipewire-aec/`). Sistema de arranque automático
+(`systemd` + autostart de escritorio) **instalado y activo en la Pi real**
+desde el 23/08, ciclo completo de apagar/encender sin confirmar todavía
+explícitamente. v10 sigue bloqueada por falta de la cámara CSI; v9 completa
+y validada en hardware real (Mac).
 
 ---
 
@@ -245,11 +250,37 @@ Hablar en tiempo real/
     `/home/pi/voice-chat/`, no en `/home/pi/v11/` — decisión de consolidarlo o no,
     pendiente.
 
-**Nada de esto está commiteado todavía** — `git status` muestra `CLAUDE.md`,
-`README.md`, `VERSIONS.md` modificados y `v9/`, `v10/`, `v11/` como carpetas sin
-trackear (v9 tampoco se había commiteado en la sesión anterior). El último commit
-real sigue siendo `5e5468c` ("v8: voz en tiempo real + análisis de sentimiento
-controlando la Pico").
+11. **Subido todo a GitHub** (`sfiro/hablar-en-tiempo-real`, público). Antes de
+    commitear: auditoría completa de secretos — todo el historial de git
+    revisado (`git log --all -p`) confirmando que nunca hubo una clave real,
+    solo el placeholder `sk-...`; confirmado que ningún `.env` real (v1, v2,
+    v8, v9) está trackeado ni se colaría con `git add -A`. `gh` (GitHub CLI)
+    no estaba instalado ni había Homebrew en esta máquina — se descargó el
+    binario oficial directo de GitHub Releases a la carpeta de scratchpad,
+    sin instalación a nivel de sistema. El login por navegador (`--web`) no
+    completó en este entorno no interactivo (se quedó solo mostrando el
+    código); el usuario generó un token de acceso personal y se autenticó
+    con `gh auth login --with-token` — el token no quedó en ningún archivo
+    del repo. Un solo commit con v9+v10+v11+documentación (`c8f6df7`), y
+    `git push -u origin main`.
+12. **Añadido `v11/README-IMPLEMENTACION.md`**: el usuario pasó una versión
+    actualizada de su diario de implementación en la Pi (secciones 10-11,
+    que hasta ahora solo vivía localmente en `/home/pi/v11/`), documentando
+    que el sistema de arranque automático ya quedó instalado y corriendo en
+    la Pi real (no solo "código listo, sin probar" como yo lo había dejado),
+    y un hallazgo real nuevo: `~/.asoundrc` puede desaparecer (le pasó el
+    23/08 durante una sincronización con GitHub, causa no diagnosticada),
+    sin autorreparación — hay que recrearlo a mano si reaparece el error
+    `paInvalidSampleRate`. Se descartó a propósito `cdp_driver.py` (driver
+    CDP de Chromium, obsoleto — recomendación del propio usuario de no
+    subirlo). Documentación de `v11/README-v11.md`/`PLAN-v11.md` corregida
+    para reflejar el estado real (instalado y activo, no solo "sin validar").
+    Segundo commit y push pendientes de esta corrección — ver sección 6.
+
+**Todo lo de los puntos 1-10 está commiteado y subido a GitHub** (commit
+`c8f6df7`, rama `main`, remoto `origin`). El punto 11 (subida) y el 12
+(README-IMPLEMENTACION.md + correcciones de estado) son de esta misma
+sesión — el 12 todavía no tiene su propio commit, ver sección 6.
 
 ---
 
@@ -288,21 +319,26 @@ controlando la Pico").
 
 ## 6. Pasos a seguir
 
-1. **Validar el ciclo completo de arranque automático de v11** — instalar
-   `systemd/v11-webrtc.service` y `autostart/v11-firefox-kiosk.desktop` en la
-   Pi 5, reiniciarla de verdad, y confirmar que queda conectada sola sin tocar
-   nada. Es el único punto que queda abierto de v11.
-2. **Decidir el destino de `v11/pipewire-aec/`** — ¿se consolida en
+1. **Commitear y subir el punto 12** (`v11/README-IMPLEMENTACION.md` +
+   correcciones de estado en `README-v11.md`/`PLAN-v11.md`/`CLAUDE.md`/
+   `README.md`/`VERSIONS.md`) — todavía no tiene commit propio. Preguntar
+   antes de comitear, como siempre.
+2. **Confirmar el ciclo completo de apagar/encender de v11 de punta a
+   punta** — el servicio y el autostart ya están instalados y activos en
+   la Pi real (23/08); falta el reinicio de verdad que lo confirme. Es el
+   único punto que queda abierto de v11.
+3. **Diagnosticar por qué `~/.asoundrc` desapareció el 23/08** (en vez de
+   solo seguir recreándolo) — ¿lo borra algo al sincronizar con GitHub?
+   ¿una limpieza del sistema? No investigado todavía.
+4. **Decidir el destino de `v11/pipewire-aec/`** — ¿se consolida en
    `/home/pi/v11/pipewire-aec/` (moviendo el despliegue real desde
    `/home/pi/voice-chat/`), o se deja como carpeta aparte en la Pi? Cualquiera
    vale, solo falta decidir y, si se mueve, reconfirmar que arranca desde ahí.
-4. **Validar v10 cuando llegue la cámara CSI** — micrófono/parlante USB, cámara,
+5. **Validar v10 cuando llegue la cámara CSI** — micrófono/parlante USB, cámara,
    Pico física. Pasos de instalación completos en `v10/README-v10.md`. Al
    llegar a ese punto, considerar si aplicar a v10 los mismos hallazgos de v11
    (STUN en `static/index.html`, Firefox en vez de Chromium) — decisión
    pendiente, documentada como tal en `v11/README-v11.md`.
-5. **Commitear los cambios pendientes** (v9 + v10 + v11 completas + toda la
-   documentación). Ninguna se ha commiteado todavía — preguntar antes de comitear.
 6. **Próximas mejoras ya identificadas, sin implementar todavía** (documentadas en
    `v10/README-v10.md`, sección "Próximos pasos"):
    - Sincronía de párpados con la mirada (pendiente desde v6)
@@ -316,6 +352,9 @@ controlando la Pico").
 ---
 
 ## Cómo retomar el trabajo
+
+Repositorio: `git clone https://github.com/sfiro/hablar-en-tiempo-real.git`
+(o `git pull` si ya está clonado localmente en la Pi/Mac que estés usando).
 
 **v11 en la Pi 5 (vía terminal, YA VALIDADA — usar tal cual):**
 ```bash

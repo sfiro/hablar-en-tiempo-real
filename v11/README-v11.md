@@ -252,13 +252,22 @@ Desktop Autologin). Al cargar el escritorio, se ejecuta
 `start_browser.sh`, que ve el servidor ya corriendo (por el paso 1) y solo
 lanza Firefox.
 
-**No verificado todavía en esta Pi 5 en concreto** — a diferencia del resto
-de esta versión, el arranque automático completo (apagar, encender, y que
-todo quede conectado sin tocar nada) no se ha probado de punta a punta.
-`start_browser.sh` y `stop_browser.sh` sí están validados como comandos
-manuales; lo que falta confirmar es que `systemd` y el autostart del
-escritorio los disparen correctamente en el orden esperado tras un
-reinicio real. Es el siguiente paso lógico, no una limitación conocida.
+**Actualización 23/08/2026 — instalado y activo en la Pi real.** El
+servicio `v11-webrtc` está instalado, `enable`d y corriendo (queda
+escuchando en `127.0.0.1:8000` desde el arranque, con `journalctl -u
+v11-webrtc -f` como log); la entrada de autostart de Firefox también está
+copiada a `~/.config/autostart/`. Lo que sigue sin confirmarse
+explícitamente es un ciclo completo de apagar/encender la Pi de punta a
+punta y comprobar que queda conectada sin tocar nada — ver
+[`README-IMPLEMENTACION.md`](README-IMPLEMENTACION.md), sección 11, para
+el detalle de esta actualización.
+
+**Hallazgo real, encontrado el 23/08 durante la sincronización con
+GitHub:** `~/.asoundrc` puede desaparecer (le pasó a esta Pi ese día, causa
+no diagnosticada). Sin él, `realtime_voice.py` vuelve a fallar con
+`paInvalidSampleRate` (ver "Validado en hardware real" arriba). No tiene
+autorreparación como el perfil de Firefox — si desaparece, hay que
+recrearlo a mano: `cp asoundrc.example ~/.asoundrc`.
 
 ## Tercera vía: cancelación de eco real de PipeWire (`pipewire-aec/`)
 
@@ -382,11 +391,19 @@ larga, ni el comportamiento tras mover la carpeta a `v11/pipewire-aec/`
   hardware; los hallazgos reales fueron de configuración de sistema o de
   comportamiento del navegador/PipeWire, no de lógica que un test hubiera
   podido atrapar.
+- **`README-IMPLEMENTACION.md`** — el diario de implementación en la Pi 5
+  real, escrito por el otro agente que instaló esto en hardware, en tres
+  actualizaciones (17/08 vía terminal, 22/08 vía navegador, 23/08 autostart
+  + sincronización con GitHub). Complementa a este README: aquí está el
+  "qué es y por qué", ahí está el "qué se hizo, en qué orden, y con qué
+  comandos exactos".
 
 ## Próximos pasos (fuera de esta versión)
 
 1. **Confirmar el arranque automático de punta a punta** (vía navegador) —
    apagar, encender, y que la conversación quede lista sin tocar nada.
+   Instalado y activo desde el 23/08 (ver "Sistema que arranca solo"); falta
+   el ciclo completo de apagar/encender confirmado explícitamente.
 2. **Decidir el destino de `pipewire-aec/`** — ¿se consolida dentro de
    `v11/pipewire-aec/` (mover el despliegue real desde
    `/home/pi/voice-chat/`), o se mantiene como una carpeta aparte en la Pi?
@@ -401,9 +418,15 @@ larga, ni el comportamiento tras mover la carpeta a `v11/pipewire-aec/`
 4. Investigar la causa raíz del fallo de Chromium en esta Pi, si en algún
    momento hace falta usarlo (por ejemplo, si Firefox no soportara algo que
    sí necesite v10 más adelante).
+5. Si `~/.asoundrc` vuelve a desaparecer, entender por qué (¿algo lo borra
+   al sincronizar con GitHub? ¿una limpieza del sistema?) en vez de solo
+   recrearlo cada vez — de momento no diagnosticado, solo mitigado.
 
 ## Referencias
 
+- [`README-IMPLEMENTACION.md`](README-IMPLEMENTACION.md) — diario de
+  implementación en hardware real, con los comandos exactos usados en cada
+  actualización (17/08, 22/08, 23/08)
 - [`../v1/README-v1.md`](../v1/README-v1.md) — versión original de la que
   parte esta (arquitectura WebRTC/WebSocket, paliativos de eco de la
   versión de terminal)
