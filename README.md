@@ -339,7 +339,10 @@ Hay además una **tercera vía**, en [`v11/pipewire-aec/`](v11/pipewire-aec/):
 eco real de PipeWire** en vez de los paliativos de `BargeInDetector` — el
 enfoque de la spec aparcada [`docs/RASPBERRY-PI.md`](docs/RASPBERRY-PI.md).
 También validada con hardware real, pero desplegada en
-`/home/pi/voice-chat/`, una carpeta distinta de `/home/pi/v11/`.
+`/home/pi/voice-chat/`, una carpeta distinta de `/home/pi/v11/`. Su
+`voice-chat.service` tuvo un bug real (corría como root, sin acceso a los
+sockets de PipeWire del usuario `pi`) — corregido el 23/08 con
+`User=pi`/`Group=pi`/`XDG_RUNTIME_DIR` y logs al journal.
 
 ```bash
 cd v11

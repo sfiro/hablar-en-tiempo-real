@@ -41,9 +41,9 @@ la cámara.
 |---|---|
 | v1-v7 | ✅ Completas y validadas en hardware real (v3 es la única sin validar con cámara real, limitación del entorno de desarrollo, no del código) |
 | v8 | ✅ Completa y validada con una conversación real |
-| v9 | ✅ **Completa y validada en hardware real por el usuario** — "funciona bien, hace el tracking perfecto, y puedo hablar en tiempo real". **Sin commitear todavía** (ver sección 4) |
-| v10 | 🔄 **Código completo, sin validar en hardware real** — escrita sin una Raspberry Pi 5, cámara CSI ni Pico delante. Bloqueada: la cámara CSI todavía no está disponible. 79 tests heredados de v9 pasan (73 passed, 6 skipped por falta de `pysentimiento` en esta máquina). **Sin commitear** |
-| **v11** | ✅ **Validada con una conversación real en hardware real, por tres vías** (terminal `--barge-in`, navegador Firefox+STUN, y AEC real de PipeWire en `pipewire-aec/`) — copia de v1 (sin sentimiento/rastreo/Pico). Sistema de arranque automático añadido, ciclo de reinicio sin validar. **Sin commitear** (ver sección 4) |
+| v9 | ✅ **Completa y validada en hardware real por el usuario** — "funciona bien, hace el tracking perfecto, y puedo hablar en tiempo real". Commiteada y subida a GitHub |
+| v10 | 🔄 **Código completo, sin validar en hardware real** — escrita sin una Raspberry Pi 5, cámara CSI ni Pico delante. Bloqueada: la cámara CSI todavía no está disponible. 79 tests heredados de v9 pasan (73 passed, 6 skipped por falta de `pysentimiento` en esta máquina). Commiteada y subida a GitHub |
+| **v11** | ✅ **Validada con una conversación real en hardware real, por tres vías** (terminal `--barge-in`, navegador Firefox+STUN, y AEC real de PipeWire en `pipewire-aec/`) — copia de v1 (sin sentimiento/rastreo/Pico). Sistema de arranque automático instalado y activo en la Pi (23/08); ciclo completo de reinicio sin confirmar. Commiteada y subida a GitHub |
 
 **v9 en detalle:** voz por navegador (WebRTC) + análisis de sentimiento (7 categorías
 de `pysentimiento`, mapeadas a la Pico) + rastreo facial real por cámara (hilo de
@@ -291,11 +291,11 @@ Hablar en tiempo real/
     `README-IMPLEMENTACION.md` era idéntica a la que él tenía — sin cambios
     ahí.
 
-**Todo lo de los puntos 1-13 está commiteado y subido a GitHub**, salvo el
-13 (la corrección de `voice-chat.service`), que es de este mismo turno y
-está pendiente de su propio commit — ver sección 6. Commits hasta ahora:
-`c8f6df7` (v9+v10+v11+documentación) y `f010599`
-(README-IMPLEMENTACION.md + correcciones de estado), ambos en `main`.
+**Todo lo de los puntos 1-13 está commiteado y subido a GitHub.** Tres
+commits en `main`: `c8f6df7` (v9+v10+v11+documentación), `f010599`
+(`README-IMPLEMENTACION.md` + correcciones de estado) y `a8487fa` (fix de
+`voice-chat.service` + documentación correspondiente). No queda nada
+pendiente de subir a fecha de esta actualización.
 
 ---
 
@@ -334,32 +334,29 @@ está pendiente de su propio commit — ver sección 6. Commits hasta ahora:
 
 ## 6. Pasos a seguir
 
-1. **Commitear y subir el punto 13** (fix de `voice-chat.service` +
-   documentación correspondiente) — todavía no tiene commit propio.
-   Preguntar antes de comitear, como siempre.
-2. **Confirmar el ciclo completo de apagar/encender de v11 de punta a
+1. **Confirmar el ciclo completo de apagar/encender de v11 de punta a
    punta** — el servicio y el autostart ya están instalados y activos en
    la Pi real (23/08); falta el reinicio de verdad que lo confirme. Es el
    único punto que queda abierto de v11.
-3. **Diagnosticar por qué `~/.asoundrc` desapareció el 23/08** (en vez de
+2. **Diagnosticar por qué `~/.asoundrc` desapareció el 23/08** (en vez de
    solo seguir recreándolo) — ¿lo borra algo al sincronizar con GitHub?
    ¿una limpieza del sistema? No investigado todavía.
-4. **Decidir el destino de `v11/pipewire-aec/`** — ¿se consolida en
+3. **Decidir el destino de `v11/pipewire-aec/`** — ¿se consolida en
    `/home/pi/v11/pipewire-aec/` (moviendo el despliegue real desde
    `/home/pi/voice-chat/`), o se deja como carpeta aparte en la Pi? Cualquiera
    vale, solo falta decidir y, si se mueve, reconfirmar que arranca desde ahí.
-5. **Validar v10 cuando llegue la cámara CSI** — micrófono/parlante USB, cámara,
+4. **Validar v10 cuando llegue la cámara CSI** — micrófono/parlante USB, cámara,
    Pico física. Pasos de instalación completos en `v10/README-v10.md`. Al
    llegar a ese punto, considerar si aplicar a v10 los mismos hallazgos de v11
    (STUN en `static/index.html`, Firefox en vez de Chromium) — decisión
    pendiente, documentada como tal en `v11/README-v11.md`.
-6. **Próximas mejoras ya identificadas, sin implementar todavía** (documentadas en
+5. **Próximas mejoras ya identificadas, sin implementar todavía** (documentadas en
    `v10/README-v10.md`, sección "Próximos pasos"):
    - Sincronía de párpados con la mirada (pendiente desde v6)
    - Reintroducir joystick y/o modo autónomo, si hacen falta
    - Si `pysentimiento`/`torch` resulta pesado en la Pi 5, considerar un modelo
      más ligero — solo con datos reales de rendimiento en la propia Pi 5
-7. **Validación adicional sugerida para v9, no bloqueante:** sesión larga sin
+6. **Validación adicional sugerida para v9, no bloqueante:** sesión larga sin
    reinicios, y el modo dormido con el `--sleep-timeout` por defecto (60s) en una
    conversación real y prolongada.
 
