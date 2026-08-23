@@ -557,6 +557,70 @@ completo: [`v11/PLAN-v11.md`](v11/PLAN-v11.md).
 
 ---
 
+## v12.0.0 🔄 — Pi 5 + Pico: ciclo de expresiones + rastreo real, sin voz (código completo, validación pendiente)
+
+**Objetivo:** conectar la Raspberry Pi 5 a la Pico por USB serial (el mismo
+firmware de v9, sin cambios) y, con la webcam USB de la propia Pi 5, ciclar
+las 10 expresiones cada 5 segundos con la mirada real del rastreo facial.
+**Todavía sin conversación de voz** — pedido explícito, para validar primero
+que la Pi 5 controla bien la Pico y su propia cámara antes de retomar la voz.
+
+**Hito 1: Firmware y enlace serial traídos sin cambios — COMPLETADO**
+- ✅ `main.py` copiado de `v9/`, sin ningún cambio de lógica — sigue
+  aceptando `LR,UD,EMOCION` por serial sin que le importe qué máquina se lo
+  manda
+- ✅ `pico_serial.py` copiado de `v10/` (ya adaptado a Linux:
+  `encontrar_puerto_pico()`, `/dev/ttyACM*`, grupo `dialout`)
+- ✅ `estado_base.py`, `diagnostico_canal.py` copiados de `v9/` sin cambios
+  (se documentó, sin corregirla por estar fuera de alcance, una
+  inconsistencia preexistente: `diagnostico_canal.py` sigue usando el
+  PCA9685 que `main.py`/`estado_base.py` abandonaron desde v5)
+- ✅ 14 tests (`pico_serial.py` + `estado_base.py`) pasando en `v12/.venv`
+
+**Hito 2: Cámara USB de la Pi 5, no CSI — COMPLETADO**
+- ✅ `face_tracker.py` copiado de `v9/`: `FaceTracker` (EMA, zona muerta,
+  mapeo a grados) sin cambios de lógica
+- ✅ A diferencia de v10 (cámara CSI, necesitó `picamera2`/`libcamera`), la
+  cámara de v12 es una webcam USB (`/dev/video1`, V4L2 genérico) — el mismo
+  `cv2.VideoCapture` que ya usaban v3-v9 en el Mac, solo con el índice de
+  cámara por defecto cambiado de 0 a 1. Sin `picamera2`, sin
+  `--system-site-packages`
+- ✅ 8 tests de `FaceTracker` pasando, sin cámara real conectada a este
+  entorno (cascada falsa inyectada, mismo patrón desde v3)
+
+**Hito 3: Ciclo de expresiones desde el cliente — `rastreo_expresiones.py` — COMPLETADO**
+- ✅ Nuevo script, sin servidor HTTP ni `.env`: cada `--interval` segundos (5
+  por defecto, igual al pulso de `main.py`) manda la siguiente `EMOCION` del
+  ciclo fijo (mismo orden que usaban v6/v7) con la mirada real del hilo de
+  rastreo — `main.py` no se modifica para volver a ciclar solo, sigue siendo
+  el mismo firmware dirigido por eventos de v9, reutilizable sin cambios el
+  día que se retome la voz
+- ✅ `_hilo_rastreo()` (cámara) y `_ciclar_expresiones()` (ciclo) corren en
+  paralelo, compartiendo `ULTIMA_MIRADA` bajo lock — mismo mecanismo que
+  `ULTIMA_MIRADA` en `v9/webrtc_server.py`
+- ✅ `_siguiente_indice()` aislado como función pura y testeada, mismo
+  patrón que `_decidir_sueno()` en v9
+- ✅ Degradación limpia verificada: sin Pico conectada, sin cámara/permiso,
+  y flags `--no-pico`/`--no-tracking` para aislar cada pieza
+- ✅ 7 tests nuevos para la lógica del ciclo, incluida una comprobación
+  cruzada contra `EMOCIONES_VALIDAS` de `pico_serial.py` para que el ciclo
+  nunca incluya una emoción que la Pico no reconozca
+
+**Pendiente, el único punto que falta:**
+- [ ] **Validar con hardware real:** Raspberry Pi 5 conectada por USB a la
+  Pico, webcam USB en `/dev/video1` (o el índice que corresponda), y una
+  sesión real viendo ciclar las 10 expresiones con la mirada siguiendo un
+  rostro de verdad.
+- [ ] Conversación de voz — explícitamente fuera de alcance de v12, para una
+  versión posterior.
+
+29 tests en total, todos nuevos frente a v9/v10 en el sentido de que no hay
+`test_webrtc_server.py`/`test_sentiment.py` (no aplican sin voz/sentimiento);
+sí se heredan y verifican `test_face_tracker.py`/`test_pico_serial.py`/
+`test_estado_base.py`. Detalle completo: [`v12/PLAN-v12.md`](v12/PLAN-v12.md).
+
+---
+
 ## Política de versiones
 
 ### Ramas y tags
@@ -610,6 +674,7 @@ cd v2             # entra en v2
 | v9.0.0  | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) + Mac + cámara |
 | v10.0.0 | 🔄 Código completo, falta validar en hardware real | Raspberry Pi Pico (MicroPython) + **Raspberry Pi 5** + cámara CSI |
 | v11.0.0 | ✅ Validada en hardware real (terminal, navegador y AEC PipeWire); autoarranque instalado y activo, ciclo completo sin confirmar | **Raspberry Pi 5** (sin Pico ni cámara) |
+| v12.0.0 | 🔄 Código completo, falta validar en hardware real | Raspberry Pi Pico (MicroPython) + **Raspberry Pi 5** + webcam USB (sin voz) |
 
 ---
 
@@ -625,4 +690,4 @@ Cada versión vive en su carpeta. Si quieres trabajar en v2 mientras otros usan 
 
 ---
 
-**Última actualización:** Agosto 23, 2026 (v11: arranque automático instalado en la Pi real)
+**Última actualización:** Agosto 23, 2026 (v12: ciclo de expresiones + rastreo real Pi 5↔Pico, sin voz — código completo, validación pendiente)

@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Guía de todo el proyecto para trabajar en este repositorio. Cada versión (`v1/`, `v2/`,
-`v3/`, `v4/`, `v5/`, `v6/`, `v7/`, `v8/`, `v9/`, `v10/`, `v11/`) tiene su propia
+`v3/`, `v4/`, `v5/`, `v6/`, `v7/`, `v8/`, `v9/`, `v10/`, `v11/`, `v12/`) tiene su propia
 documentación detallada; este fichero es el mapa general y recoge los hechos que
 cruzan versiones. Empieza aquí, salta al `CLAUDE-vN.md` o `README-vN.md` de la
 versión concreta cuando necesites el detalle de implementación.
@@ -177,19 +177,47 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
   aparcada `docs/RASPBERRY-PI.md` — también validada con hardware real, pero
   desplegada en una carpeta distinta (`/home/pi/voice-chat/`), sin mover
   todavía a la estructura de `v11/`.
+- **v12** — pedido explícito del usuario: conectar la Raspberry Pi 5 a la
+  Pico por USB serial (retomando el firmware de v9 sin ningún cambio) y,
+  con la webcam USB de la propia Pi 5, ciclar las 10 expresiones cada 5
+  segundos con la mirada real del rastreo facial — **todavía sin
+  conversación de voz**, a propósito, para validar esa pieza antes de
+  volver a añadir voz. No es una continuación lineal de v11 (que sigue
+  siendo la vía de voz validada); es una rama paralela, igual que v10/v11
+  lo son entre sí, que aísla "Pi 5 habla con la Pico real y ve con su
+  propia cámara" del resto del sistema. `main.py` (firmware) y
+  `pico_serial.py` se copian sin cambios de v9 y v10 respectivamente — el
+  firmware ya era dirigido por eventos desde v8 (espera un `EMOCION` por
+  serial y lo mantiene 5s), así que v12 no lo revierte a un ciclo fijo
+  interno: en su lugar, un script nuevo del lado de la Pi 5,
+  [`v12/rastreo_expresiones.py`](v12/rastreo_expresiones.py), hace de
+  "reloj externo" mandando una `EMOCION` nueva cada `--interval` segundos
+  (5 por defecto, igual al pulso del firmware). La cámara de esta versión
+  es una **webcam USB** (`/dev/video1`, V4L2 genérico), no la cámara CSI de
+  v10 — por eso `face_tracker.py` no necesita `picamera2`: el mismo
+  `cv2.VideoCapture` que usaban v3-v9 en el Mac funciona igual aquí, solo
+  cambiando el índice de cámara por defecto (1, no 0). Sin voz, tampoco
+  hace falta `.env`/`OPENAI_API_KEY`/`pysentimiento`/servidor HTTP alguno —
+  el `requirements.txt` más corto de todo el proyecto (`pyserial` +
+  `opencv-python<5`). 29 tests, todos pasando sin hardware; **código
+  completo, sin validar todavía en la Raspberry Pi 5 real** — igual
+  situación en la que quedó v10 al escribirse.
 
 **Regla del proyecto, válida para todas las versiones: ninguna versión importa
 código de otra carpeta de versión.** v2 es una copia de v1 con el añadido de
-sentimiento, no un import de v1. v4, v5, v6, v7, v9 y v10 tienen sus propias copias
-de `face_tracker.py` y `pico_serial.py` (misma lógica entre sí y con v3; v10 adapta
-`pico_serial.py` para Linux y `face_tracker.py` para cámara CSI, ver su sección más
-abajo — adaptar no es lo mismo que importar), no las importan con una ruta relativa
-cruzada. v8 sigue el mismo patrón para lo que sí reutiliza (`pico_serial.py` de v7,
+sentimiento, no un import de v1. v4, v5, v6, v7, v9, v10 y v12 tienen sus propias
+copias de `face_tracker.py` y `pico_serial.py` (misma lógica entre sí y con v3;
+v10 adapta `pico_serial.py` para Linux y `face_tracker.py` para cámara CSI; v12
+reutiliza el `pico_serial.py` ya adaptado por v10 y adapta `face_tracker.py` solo
+en el índice de cámara por defecto, ver su sección más abajo — adaptar no es lo
+mismo que importar), no las importan con una ruta relativa cruzada. v8 sigue el
+mismo patrón para lo que sí reutiliza (`pico_serial.py` de v7,
 `realtime_voice.py`/`sentiment_analyzer.py` de v2), pero **no** copia
 `face_tracker.py`: v8 no rastrea el rostro todavía, a propósito (ver sección de v8),
 así que ese fichero simplemente no aplica en esa versión — ausencia deliberada, no
 un descuido. v9 retoma `face_tracker.py` desde v7 (ver sección de v9); v10 lo
-adapta desde v9 para la cámara CSI. Esto es deliberado y se pidió explícitamente:
+adapta desde v9 para la cámara CSI; v12 retoma `main.py` sin cambios desde v9 y
+`pico_serial.py` sin cambios desde v10 (mismo cliente Linux). Esto es deliberado y se pidió explícitamente:
 **cada versión debe poder ejecutarse borrando todas las demás carpetas de
 versión.** Si añades una versión nueva que reutiliza algo de otra, copia el
 fichero, no lo importes. Excepción deliberada: `v5/main_pca9685.py` (la versión
@@ -197,20 +225,23 @@ retirada del firmware) no se copió a v6 ni v7, porque no es "base funcional" �
 código explícitamente no usado, y su historial ya vive en `v5/README-v5.md`.
 
 Cada carpeta de versión de cliente (v1/v2/v3 y la parte Mac de v4/v5/v6/v7/v8/v9;
-la parte Raspberry Pi 5 de v10/v11) tiene su propio `.venv/`, `requirements.txt` y
-`.env`. En v10 el venv debe crearse con `--system-site-packages` — ver
-`v10/README-v10.md` — porque `picamera2` se instala por `apt`, no por `pip`, y un
-venv normal no vería ese paquete. v11 no tiene esa restricción: no usa ningún
-paquete que solo exista instalado por `apt` (sin cámara, sin Pico), así que su
-venv es un `python3 -m venv .venv` normal.
+la parte Raspberry Pi 5 de v10/v11/v12) tiene su propio `.venv/`, `requirements.txt`
+y `.env` (salvo v12, que no toca voz y no necesita ningún `.env`/`OPENAI_API_KEY` —
+ver su sección más abajo). En v10 el venv debe crearse con
+`--system-site-packages` — ver `v10/README-v10.md` — porque `picamera2` se
+instala por `apt`, no por `pip`, y un venv normal no vería ese paquete. v11 y v12
+no tienen esa restricción: ninguna de las dos usa un paquete que solo exista
+instalado por `apt` (v11 sin cámara ni Pico; v12 con Pico pero con una cámara USB
+que `cv2.VideoCapture` ya sabe abrir, sin `picamera2`), así que su venv es un
+`python3 -m venv .venv` normal.
 
-**Las piezas que rompen el patrón de venv son `main.py` (v4/v5/v6/v7/v8/v9/v10) y
-`estado_base.py` (v6/v7/v8/v9/v10):** no tienen entorno porque no son Python que
+**Las piezas que rompen el patrón de venv son `main.py` (v4/v5/v6/v7/v8/v9/v10/v12) y
+`estado_base.py` (v6/v7/v8/v9/v10/v12):** no tienen entorno porque no son Python que
 corra en el cliente (Mac o Pi 5) — son firmware MicroPython que se copia a la Pico
 (con Thonny o `mpremote`) y se ejecuta ahí, sin que le importe qué máquina le habla
-por serial. El resto de v4/v5/v6/v7/v8/v9/v10 (`pico_serial.py` y, en v4-v7, v9 y
-v10, `face_tracker.py`; sus tests) sí sigue el patrón normal de venv, igual que
-v1/v2/v3.
+por serial. El resto de v4/v5/v6/v7/v8/v9/v10/v12 (`pico_serial.py` y, en v4-v7, v9,
+v10 y v12, `face_tracker.py`; sus tests) sí sigue el patrón normal de venv, igual
+que v1/v2/v3.
 
 ## Entorno, por versión
 
@@ -973,6 +1004,86 @@ sesión del usuario `pi` — fallaba con `Permission denied`. Corregido con
 `User=pi`, `Group=pi` y `Environment=XDG_RUNTIME_DIR=/run/user/1000`;
 además, `StandardOutput/StandardError=append:...` hacía fallar el propio
 arranque del servicio (`status=209/STDOUT`) — quitado, logs al journal.
+
+## v12 — Pi 5 + Pico: ciclo de expresiones + rastreo real, sin voz todavía
+
+Pedido explícito del usuario: conectar la Raspberry Pi 5 a la Pico por USB
+serial (el mismo firmware de v9, `main.py`, sin cambios) y, con la cámara de
+la propia Pi 5, hacer dos cosas a la vez, **sin implementar todavía
+conversación de voz**: ciclar las 10 expresiones cada 5 segundos, y rastrear
+el rostro en tiempo real con esa misma mirada real reflejada en cada
+expresión enviada.
+
+**No es una continuación de v11.** v11 es la vía de voz validada en hardware
+real (terminal + navegador + AEC de PipeWire); v12 es una rama paralela,
+igual que v10/v11 lo son entre sí, que aísla la pieza "Pi 5 controla la
+Pico real y ve con su propia cámara" del resto del sistema — sin voz,
+sin sentimiento, sin modo dormido (ninguno de los tres tiene sentido sin
+una conversación de la que extraer texto o medir actividad).
+
+**`main.py` (firmware) no cambia — se copia literal de v9.** Desde v8, la
+Pico ya no cicla las expresiones sola: espera un `EMOCION` por serial y lo
+mantiene 5 segundos (el "pulso", `INTERVALO_EXPRESION_MS`) antes de volver a
+`NEUTRAL`. v12 no revierte ese cambio para que la Pico vuelva a ciclar
+internamente — sería un paso atrás justo cuando ese modelo dirigido por
+eventos es el que hace falta para cuando se retome la voz. En su lugar, el
+ciclo vive en un script nuevo del lado de la Pi 5,
+[`v12/rastreo_expresiones.py`](v12/rastreo_expresiones.py), que hace de
+"reloj externo": cada `--interval` segundos (5 por defecto, igual al pulso
+del firmware, para que nunca haya un hueco donde caiga a `NEUTRAL` entre un
+cambio y el siguiente) manda la siguiente `EMOCION` de un ciclo fijo
+(`CICLO_EMOCIONES`, mismo orden que usaban v6/v7:
+`NEUTRAL → FELIZ → ENOJADO → TRISTE → SORPRENDIDO → DORMIDO → DUDA →
+SOSPECHA → PENSATIVO → NERVIOSO`) junto con la mirada real del rastreo en
+ese instante — mismo razonamiento que `ULTIMA_MIRADA` en
+`v9/webrtc_server.py`, aquí sin necesitar servidor HTTP: es un único
+proceso con dos hilos (uno para la cámara, el principal para el ciclo).
+
+**La cámara de esta versión es una webcam USB, no la CSI de v10 — decisión
+que simplifica bastante.** El usuario indicó que la cámara de esta Pi 5 está
+conectada por USB, enumerando como dispositivo V4L2 genérico
+(`/dev/video1`), no por el conector de cinta CSI que usó v10. Eso significa
+que `cv2.VideoCapture` —el mismo que ya sabían abrir v3-v9 en el Mac— habla
+directamente con ella, sin necesitar el wrapper `picamera2`/`libcamera` que
+v10 sí necesitó, ni un venv con `--system-site-packages`.
+[`v12/face_tracker.py`](v12/face_tracker.py) es la copia de
+`FaceTracker` de v9 (EMA, zona muerta, mapeo a grados — sin cambios de
+lógica), con el único cambio real de que `--camera-index` por defecto pasa
+de 0 (Mac) a 1 (donde esta Pi 5 concreta enumera la webcam).
+
+**Sin voz, no hace falta nada de la infraestructura de OpenAI.**
+[`v12/rastreo_expresiones.py`](v12/rastreo_expresiones.py) no abre ningún
+servidor HTTP, no lee `.env`, no necesita `OPENAI_API_KEY` ni
+`pysentimiento` — es el `requirements.txt` más corto de todo el proyecto
+(`pyserial` + `opencv-python<5`, nada más). `pico_serial.py` se copia sin
+cambios de `v10/pico_serial.py` (ya adaptado a Linux:
+`encontrar_puerto_pico()`, `/dev/ttyACM*`, nota del grupo `dialout`) — v12
+es también un cliente Raspberry Pi 5, así que no hace falta volver a
+adaptarlo. `estado_base.py` y `diagnostico_canal.py` se copian sin cambios
+de v9; se documentó (sin corregirla, por estar fuera de alcance de esta
+versión) una inconsistencia preexistente encontrada al copiar
+`diagnostico_canal.py`: sigue usando el controlador PCA9685 por I2C, el
+enfoque que `main.py`/`estado_base.py` abandonaron desde v5 — ya estaba así
+en v9 y en todas las versiones intermedias, no es un error introducido aquí.
+
+**`_siguiente_indice()`, aislado como función pura y testeada** (mismo
+patrón que `_decidir_sueno()` en v9): avanza el índice del ciclo de 10
+expresiones y vuelve a 0 al llegar al final, sin depender de temporizadores
+reales. Un test cruza `CICLO_EMOCIONES` contra `EMOCIONES_VALIDAS` de
+`pico_serial.py` para que el ciclo nunca incluya, en silencio, una emoción
+que la Pico rechazaría.
+
+**Cómo se verificó:** sintaxis de los 5 ficheros `.py` del lado cliente, y
+29 tests (8 de `FaceTracker`, 10 de `pico_serial.py`, 4 de `estado_base.py`,
+7 de la lógica del ciclo), todos pasando dentro de `v12/.venv`, sin ninguna
+referencia a v9/v10. Arranque real de `rastreo_expresiones.py` en este
+entorno (sin Pico ni cámara con permiso concedido): degrada limpiamente en
+ambos casos — confirmado en los logs que el ciclo de expresiones sigue
+avanzando cada `--interval` segundos con la mirada fija en 90,90, en vez de
+fallar con una excepción sin manejar. **Sin validar todavía en hardware
+real** (Raspberry Pi 5, Pico, webcam) — igual situación en la que quedó v10
+al escribirse. Detalle completo:
+[`v12/README-v12.md`](v12/README-v12.md) y [`v12/PLAN-v12.md`](v12/PLAN-v12.md).
 
 ## Cómo verificar cambios (todas las versiones)
 
