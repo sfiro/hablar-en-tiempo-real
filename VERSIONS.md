@@ -649,6 +649,73 @@ Detalle de hitos: [`v12/PLAN-v12.md`](v12/PLAN-v12.md).
 
 ---
 
+## v13.0.0 🔄 — Voz en tiempo real + rastreo facial real, sin sentimiento todavía (código completo, validación pendiente)
+
+**Objetivo:** juntar en el mismo proceso las dos piezas ya validadas por
+separado en la Raspberry Pi 5: la conversación de voz (v11) y el rastreo
+facial real con control de la Pico (v12). **Todavía sin análisis de
+sentimiento** — pedido explícito: la Pico se queda siempre en `NEUTRAL`
+(con parpadeo normal), solo la mirada real del rastreo mueve los ojos.
+Implementado en el orden pedido explícitamente: primero
+`realtime_voice.py` (terminal), después `webrtc_server.py` (navegador).
+
+**Hito 1: Firmware, enlace serial y rastreo traídos de v12, sin cambios — COMPLETADO**
+- ✅ `main.py`, `pico_serial.py`, `face_tracker.py`, `estado_base.py`,
+  `diagnostico_canal.py` copiados de `v12/`, sin ningún cambio de lógica
+- ✅ 24 tests (8 de `FaceTracker`, 12 de `pico_serial.py`, 4 de
+  `estado_base.py`) verificados en `v13/.venv`
+
+**Hito 2: Voz por terminal + rastreo — `realtime_voice.py` — COMPLETADO (primer hito pedido)**
+- ✅ Base: copia literal de `v11/realtime_voice.py`, sin cambios en la
+  parte de audio
+- ✅ `--tracking` nuevo: abre la Pico y la cámara (CSI primero, con
+  respaldo a webcam USB — mismo patrón que `v12/rastreo_expresiones.py`) y
+  lanza `_hilo_rastreo()` antes de `asyncio.run(run(...))` — primera vez en
+  todo el proyecto que la vía de terminal rastrea el rostro (hasta v9/v10,
+  solo `webrtc_server.py` lo hacía)
+- ✅ `_hilo_rastreo()` nunca manda un campo EMOCION — solo `PICO.enviar(lr,
+  ud)` — así que `emocion_actual` en el firmware nunca sale de `NEUTRAL`
+- ✅ Liberación de recursos en el `finally` de `main()`: detiene el hilo,
+  libera la cámara según su tipo, para `PICO`
+- ✅ Sin tests nuevos: no hay lógica pura nueva que valga la pena testear
+  sin hardware (mismo criterio que usó v9 para su propio hilo de rastreo)
+
+**Verificado sin hardware:** sintaxis, y arranque real con una clave de API
+falsa, sin Pico, sin `picamera2` y sin permiso de cámara: la cadena de
+respaldo (CSI → USB → sin cámara) degrada limpiamente en cada paso, y la
+conversación de voz llega hasta "Conectando a gpt-realtime …" con
+normalidad.
+
+**Hito 3: Voz por navegador + rastreo — `webrtc_server.py` — COMPLETADO (segundo hito pedido)**
+- ✅ Base: copia literal de `v11/webrtc_server.py` (incluye el fix real de
+  v11 en `do_GET` para la query string)
+- ✅ `--tracking` nuevo: mismo mecanismo que v9/v10 ya validaron para esta
+  pieza, sin la parte de sentimiento que v9 sí tenía — v13 no la trae, a
+  propósito
+- ✅ **Corregido durante el propio desarrollo:** el mensaje de resumen decía
+  "ACTIVO" incluso cuando la cámara había fallado en abrirse (arrastrado
+  del mismo patrón de v9) — añadida `rastreo_activo`, una variable que solo
+  se pone a `True` si el hilo de rastreo realmente se lanzó
+- ✅ `static/index.html` copiado de `v11/`, sin ningún cambio: el navegador
+  no necesita saber nada del rastreo, que vive del lado del servidor
+
+**Verificado sin hardware:** sintaxis, y arranque real con `--no-browser` y
+clave de API falsa: sirve la página con normalidad; sin cámara disponible,
+el mensaje corregido dice "pedido con --tracking, pero sin cámara
+disponible" en vez de "ACTIVO".
+
+**Pendiente, el único punto que falta:**
+- [ ] **Validar con hardware real:** Raspberry Pi 5 con Pico física, cámara
+  (CSI u USB), micrófono/parlante, y una conversación hablada de verdad
+  viendo el rastreo funcionar a la vez — Hito 2 primero, Hito 3 después.
+- [ ] Análisis de sentimiento — explícitamente fuera de alcance de v13,
+  para una v14 posterior.
+
+26 tests en total (heredados de v12 sin cambios). Detalle completo:
+[`v13/PLAN-v13.md`](v13/PLAN-v13.md).
+
+---
+
 ## Política de versiones
 
 ### Ramas y tags
@@ -703,6 +770,7 @@ cd v2             # entra en v2
 | v10.0.0 | 🔄 Código completo, falta validar en hardware real | Raspberry Pi Pico (MicroPython) + **Raspberry Pi 5** + cámara CSI |
 | v11.0.0 | ✅ Validada en hardware real (terminal, navegador y AEC PipeWire); autoarranque instalado y activo, ciclo completo sin confirmar | **Raspberry Pi 5** (sin Pico ni cámara) |
 | v12.0.0 | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) + **Raspberry Pi 5** + cámara CSI (sin voz) |
+| v13.0.0 | 🔄 Código completo, falta validar en hardware real | Raspberry Pi Pico (MicroPython) + **Raspberry Pi 5** + cámara CSI + micro/parlante USB (sin sentimiento) |
 
 ---
 
@@ -718,4 +786,4 @@ Cada versión vive en su carpeta. Si quieres trabajar en v2 mientras otros usan 
 
 ---
 
-**Última actualización:** Agosto 23, 2026 (v12: validada en hardware real — cámara CSI real, tres bugs reales corregidos: cascada mal calibrada, falso positivo secuestrando la mirada, y buffer USB de la Pico desbordado)
+**Última actualización:** Agosto 23, 2026 (v13: junta voz en tiempo real de v11 con rastreo facial real de v12 en el mismo proceso, sin sentimiento todavía — código completo, validación pendiente)

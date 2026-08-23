@@ -1,0 +1,25 @@
+# v13 — Voz en tiempo real (retomada de v11) + rastreo facial real (retomado
+# de v12), todavía sin análisis de sentimiento. Junta las dependencias de
+# las dos versiones que combina.
+
+# De v11/v1: conversación de voz (realtime_voice.py, webrtc_server.py).
+websockets>=13.0
+sounddevice>=0.4.7
+numpy>=1.26
+python-dotenv>=1.0
+certifi>=2024.2.2
+
+# De v12/v10: enlace serial hacia la Pico (pico_serial.py).
+pyserial>=3.5
+
+# De v12/v9: rastreo facial (face_tracker.py). Fijado a la serie 4.x: OpenCV
+# 5.0 movió CascadeClassifier a opencv-contrib-python. Ver CLAUDE.md.
+opencv-python>=4.9.0,<5
+
+# picamera2 NO va aquí a propósito, igual que en v10/v12: la cámara real de
+# esta versión es la CSI OV5647 (conector CAM/DISP 1), y picamera2 se
+# instala por `apt` (python3-picamera2), no por `pip` — depende de
+# bibliotecas nativas de libcamera compiladas para la placa. El venv debe
+# crearse con --system-site-packages para verlo (ver README-v13.md). Sin
+# picamera2 instalado, --tracking cae automáticamente a la webcam USB vía
+# opencv-python (respaldo, no la vía principal en el hardware real).

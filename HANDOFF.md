@@ -2,26 +2,28 @@
 
 **Fecha:** 23 de agosto de 2026
 **Repositorio en GitHub:** https://github.com/sfiro/hablar-en-tiempo-real
-(público). v9, v10, v11 y v12 (en su versión inicial, planificada con webcam
-USB) ya estaban commiteadas y subidas antes de esta actualización — ver
-sección 4 para el detalle de cómo se hizo (auditoría de secretos, instalación
-de `gh` sin Homebrew, autenticación con token). **La corrección de v12 tras
-validar en hardware real (cámara CSI, no USB; tres bugs reales corregidos)
-está en el filesystem local, sin commitear todavía** — ver sección 4, punto
-16.
-**Última versión activa:** v12 — **✅ validada en hardware real**: conecta la
-Raspberry Pi 5 a la Pico por USB serial (firmware de v9, sin cambios) y
-cicla las 10 expresiones cada 5s con la mirada real de la cámara CSI de la
-Pi 5 (la planificación original asumía webcam USB; corregido tras validar —
-ver sección 4, punto 16), **todavía sin conversación de voz**, a propósito.
-v11 sigue siendo la vía de voz **validada con una conversación real en la
-Raspberry
-Pi 5 del usuario, por tres vías** (terminal con `realtime_voice.py
---barge-in`; navegador con `webrtc_server.py` + Firefox en kiosko; y una
-tercera con cancelación de eco real de PipeWire, escrita desde cero, en
-`v11/pipewire-aec/`), con sistema de arranque automático (`systemd` +
-autostart de escritorio) **instalado y activo en la Pi real** desde el
-23/08, ciclo completo de apagar/encender sin confirmar todavía
+(público). v9, v10, v11 y v12 (incluida su corrección tras validar en
+hardware real — cámara CSI, no USB; tres bugs reales corregidos) ya estaban
+commiteadas y subidas antes de esta actualización — ver sección 4 para el
+detalle de cómo se hizo (auditoría de secretos, instalación de `gh` sin
+Homebrew, autenticación con token). **v13 (nueva en esta sesión) está en el
+filesystem local, sin commitear todavía** — ver sección 4, punto 17.
+**Última versión activa:** v13 (código completo, sin validar en hardware) —
+junta voz en tiempo real (retomada de v11) con rastreo facial real
+(retomado de v12) en el mismo proceso, **todavía sin análisis de
+sentimiento**: la Pico se queda siempre en NEUTRAL (parpadeo normal),
+mientras la mirada real del rastreo mueve los ojos. Implementado en el
+orden pedido: primero `realtime_voice.py` (terminal), después
+`webrtc_server.py` (navegador). v12 sigue siendo la vía de rastreo+Pico
+**✅ validada en hardware real**, con la cámara CSI real de la Pi 5 (la
+planificación original asumía webcam USB, corregida tras validar). v11
+sigue siendo la vía de voz sola **validada con una conversación real en la
+Raspberry Pi 5 del usuario, por tres vías** (terminal con
+`realtime_voice.py --barge-in`; navegador con `webrtc_server.py` + Firefox
+en kiosko; y una tercera con cancelación de eco real de PipeWire, escrita
+desde cero, en `v11/pipewire-aec/`), con sistema de arranque automático
+(`systemd` + autostart de escritorio) **instalado y activo en la Pi real**
+desde el 23/08, ciclo completo de apagar/encender sin confirmar todavía
 explícitamente. v10 sigue bloqueada por falta de la cámara CSI; v9 completa
 y validada en hardware real (Mac).
 
@@ -32,7 +34,7 @@ y validada en hardware real (Mac).
 Asistente de voz en tiempo real contra la **Realtime API de OpenAI**, integrado con un
 robot animatrónico ("ojos mecánicos", Raspberry Pi Pico) cuya expresión facial y
 mirada reaccionan a la conversación. El proyecto crece por **versiones aditivas**
-(`v1/` … `v11/`), cada una en su propia carpeta, autónoma (sin imports entre
+(`v1/` … `v13/`), cada una en su propia carpeta, autónoma (sin imports entre
 versiones, solo copias), documentada en su propio `README-vN.md`/`PLAN-vN.md`.
 
 **Objetivo de la fase actual:** llevar la pila de v9 (voz + sentimiento + rastreo +
@@ -42,8 +44,12 @@ v11 es una versión paralela, más pequeña a propósito: aísla solo la convers
 voz (sin sentimiento, sin rastreo, sin Pico) para poder probarla ya, sin esperar a
 la cámara. v12 es una tercera rama paralela, pedida explícitamente por el usuario:
 aísla la otra mitad de v10 — Pi 5 hablando con la Pico real por USB y viendo con su
-propia cámara (una webcam USB, no CSI) — ciclando las 10 expresiones cada 5s con la
-mirada real del rastreo, **todavía sin voz**.
+propia cámara — ciclando las 10 expresiones cada 5s con la mirada real del rastreo,
+**todavía sin voz**; validada en hardware real, con la cámara CSI real (no la
+webcam USB planificada al principio). v13, pedida explícitamente, junta v11 y v12
+en el mismo proceso: conversación de voz real + rastreo facial real a la vez,
+**todavía sin análisis de sentimiento** — la Pico se queda siempre en NEUTRAL,
+con parpadeo normal, mientras la mirada real del rastreo mueve los ojos.
 
 ---
 
@@ -56,7 +62,8 @@ mirada real del rastreo, **todavía sin voz**.
 | v9 | ✅ **Completa y validada en hardware real por el usuario** — "funciona bien, hace el tracking perfecto, y puedo hablar en tiempo real". Commiteada y subida a GitHub |
 | v10 | 🔄 **Código completo, sin validar en hardware real** — escrita sin una Raspberry Pi 5, cámara CSI ni Pico delante. Bloqueada: la cámara CSI todavía no está disponible. 79 tests heredados de v9 pasan (73 passed, 6 skipped por falta de `pysentimiento` en esta máquina). Commiteada y subida a GitHub |
 | **v11** | ✅ **Validada con una conversación real en hardware real, por tres vías** (terminal `--barge-in`, navegador Firefox+STUN, y AEC real de PipeWire en `pipewire-aec/`) — copia de v1 (sin sentimiento/rastreo/Pico). Sistema de arranque automático instalado y activo en la Pi (23/08); ciclo completo de reinicio sin confirmar. Commiteada y subida a GitHub |
-| **v12** | ✅ **Validada en hardware real** — Pi 5 + Pico (firmware de v9, sin cambios) + cámara CSI (planificada como webcam USB, corregida tras validar), ciclando las 10 expresiones cada 5s con la mirada real del rastreo; todavía sin voz, a propósito. Tres bugs reales corregidos (cascada mal calibrada, falso positivo, buffer USB de la Pico desbordado). 33 tests, todos pasan. **Corrección sin commitear todavía** — ver sección 4, punto 16 |
+| **v12** | ✅ **Validada en hardware real** — Pi 5 + Pico (firmware de v9, sin cambios) + cámara CSI (planificada como webcam USB, corregida tras validar), ciclando las 10 expresiones cada 5s con la mirada real del rastreo; todavía sin voz, a propósito. Tres bugs reales corregidos (cascada mal calibrada, falso positivo, buffer USB de la Pico desbordado). 33 tests, todos pasan. Commiteada y subida a GitHub |
+| **v13** | 🔄 **Código completo, sin validar en hardware real** — junta v11 (voz) + v12 (rastreo + Pico) en el mismo proceso; todavía sin sentimiento, la Pico se queda siempre en NEUTRAL. Implementado primero `realtime_voice.py --tracking` (terminal), después `webrtc_server.py --tracking` (navegador). 26 tests, todos pasan. **Sin commitear todavía** — ver sección 4, punto 17 |
 
 **v9 en detalle:** voz por navegador (WebRTC) + análisis de sentimiento (7 categorías
 de `pysentimiento`, mapeadas a la Pico) + rastreo facial real por cámara (hilo de
@@ -170,6 +177,36 @@ USB → mirada fija, en cascada, cada paso sin excepción no manejada).
 expresiones y rastreo facial siguiendo un rostro real de forma sostenida en
 el tiempo. Detalle completo: [`v12/README-v12.md`](v12/README-v12.md).
 
+**v13 en detalle:** pedido explícito del usuario — combinar v11 y v12 para
+que el sistema pueda mantener una conversación en tiempo real mientras hace
+rastreo de ojos, todavía sin enviar sentimientos (siempre NEUTRAL), pero
+con el rastreo activo y los párpados funcionando con normalidad.
+Implementado en el orden pedido explícitamente: primero
+`realtime_voice.py` (el "servidor .py", terminal/WebSocket), después
+`webrtc_server.py` (la vía web/navegador). `main.py`, `pico_serial.py` y
+`face_tracker.py` se copian sin ningún cambio de v12 (cámara CSI real con
+respaldo automático a webcam USB, `_drenar_entrada()` ya incluido para el
+bug del buffer USB). El hilo de rastreo (retomado de
+`v12/rastreo_expresiones.py`) nunca manda un campo EMOCION — solo
+`PICO.enviar(lr, ud)` — así que el firmware nunca sale de `NEUTRAL` durante
+la conversación: parpadeo periódico normal, sin que
+DUDA/PENSATIVO/NERVIOSO se disparen nunca. Es la primera vez en el
+proyecto que `realtime_voice.py` (la vía de terminal) rastrea el rostro —
+hasta v9/v10, solo `webrtc_server.py` lo hacía. Corregido durante el propio
+desarrollo, antes de darlo por completo: el mensaje de resumen de
+`webrtc_server.py` decía "ACTIVO" incluso con la cámara fallada (arrastrado
+del mismo patrón de v9) — añadida una variable `rastreo_activo` que
+distingue "se pidió --tracking" de "el rastreo quedó realmente activo". 26
+tests (heredados de v12 sin cambios: `FaceTracker`/`PicoLink`/
+`estado_base.py`; sin tests nuevos porque no hay lógica pura nueva sin
+hardware). Verificado con una clave de API falsa y sin cámara/Pico en este
+entorno: la cadena de respaldo (CSI → USB → sin cámara) degrada
+limpiamente en cada paso, en los dos scripts. **Código completo, sin
+validar todavía en hardware real** — la pieza de más incertidumbre real es
+si la conversación de voz y el hilo de rastreo compiten por CPU de forma
+perceptible en la Pi 5 (v9 ya confirmó que conviven bien en un Mac, no
+repetido aquí). Detalle completo: [`v13/README-v13.md`](v13/README-v13.md).
+
 ---
 
 ## 3. Archivos
@@ -226,9 +263,19 @@ Hablar en tiempo real/
 │   ├── README-v12.md, PLAN-v12.md
 │   ├── MODIFICACIONES-LOCALES.md  # Diario de validación en hardware real (23/08/2026)
 │   └── (sin .venv/ ni .env: no toca voz, nada que subir de credenciales)
-├── CLAUDE.md                   # Mapa técnico de todo el proyecto (actualizado con v12)
-├── README.md                   # Índice del proyecto (actualizado con v12)
-├── VERSIONS.md                 # Hoja de ruta / changelog (actualizado con v12)
+├── v13/                        # ★ NUEVA esta sesión — voz + rastreo real, sin sentimiento
+│   ├── main.py, pico_serial.py, face_tracker.py  # Copias sin cambios de v12
+│   ├── realtime_voice.py        # v11 + --tracking (Hito A, pedido primero)
+│   ├── webrtc_server.py         # v11 + --tracking (Hito B, pedido después)
+│   ├── static/index.html        # Copia sin cambios de v11
+│   ├── estado_base.py, diagnostico_canal.py  # copias sin cambios de v12
+│   ├── requirements.txt         # Voz (v11) + serial/cámara (v12); picamera2 vía apt
+│   ├── tests/                   # 26 tests, todos pasan
+│   ├── README-v13.md, PLAN-v13.md
+│   └── (sin .venv/ subido; .env queda fuera, con clave real, .gitignore)
+├── CLAUDE.md                   # Mapa técnico de todo el proyecto (actualizado con v13)
+├── README.md                   # Índice del proyecto (actualizado con v13)
+├── VERSIONS.md                 # Hoja de ruta / changelog (actualizado con v13)
 ├── docs/RASPBERRY-PI.md        # Spec headless aparcada — v10/v11 no la siguieron, ver sección 4
 └── HANDOFF.md                  # Este fichero
 ```
@@ -385,17 +432,28 @@ Hablar en tiempo real/
     neutralizaron a "el usuario"/"hardware real", siguiendo el mismo estilo
     del resto del proyecto. **Confirmado en hardware real, con los cuatro
     fixes aplicados: el ciclo de expresiones y el rastreo facial funcionan
-    juntos y de forma sostenida en el tiempo.** **Código completo, sin
-    commitear todavía.**
+    juntos y de forma sostenida en el tiempo.** Commiteado y subido
+    (`307caf4`).
+17. **Creada v13** (pedido explícito): junta v11 (voz) y v12 (rastreo +
+    Pico) en el mismo proceso, todavía sin análisis de sentimiento — la
+    Pico se queda siempre en NEUTRAL, con parpadeo normal, mientras la
+    mirada real del rastreo mueve los ojos. Implementado en el orden
+    pedido: primero `realtime_voice.py --tracking` (terminal), después
+    `webrtc_server.py --tracking` (navegador). `main.py`, `pico_serial.py`
+    y `face_tracker.py` copiados sin cambios de v12. Corregido durante el
+    propio desarrollo un mensaje de resumen engañoso en `webrtc_server.py`
+    (decía "ACTIVO" con la cámara fallada). 26 tests, todos pasan. Ver la
+    sección "v13 en detalle" más arriba y `v13/README-v13.md`/`PLAN-v13.md`
+    para el detalle completo. **Código completo, sin commitear todavía.**
 
-**Todo lo de los puntos 1-15 está commiteado y subido a GitHub.** Cinco
+**Todo lo de los puntos 1-16 está commiteado y subido a GitHub.** Seis
 commits en `main`: `c8f6df7` (v9+v10+v11+documentación), `f010599`
 (`README-IMPLEMENTACION.md` + correcciones de estado), `a8487fa` (fix de
 `voice-chat.service` + documentación correspondiente), `7649820`
-(corrección de estado obsoleto en este `HANDOFF.md`) y `5208d68` (v12
-completa, planificada con webcam USB). **El punto 16 (corrección de v12 a
-cámara CSI + tres bugs reales) es de esta misma actualización y está
-pendiente de su propio commit** — ver sección 6.
+(corrección de estado obsoleto en este `HANDOFF.md`), `5208d68` (v12
+completa, planificada con webcam USB) y `307caf4` (corrección de v12 a
+cámara CSI + tres bugs reales). **El punto 17 (v13) es de esta misma
+actualización y está pendiente de su propio commit** — ver sección 6.
 
 ---
 
@@ -434,24 +492,29 @@ pendiente de su propio commit** — ver sección 6.
 
 ## 6. Pasos a seguir
 
-1. **Commitear y subir la corrección de v12** — cámara CSI (no USB), tres
-   bugs reales corregidos (cascada, falso positivo, buffer USB de la Pico),
-   `rastreo_solo.py` y las tres herramientas de diagnóstico nuevas. Código
-   completo en el filesystem local, sin commitear todavía a fecha de esta
-   actualización. Auditoría de secretos de rutina antes de commitear (v12
-   sigue sin `.env` real).
-2. **Confirmar el ciclo completo de apagar/encender de v11 de punta a
+1. **Commitear y subir v13** — código completo en el filesystem local, sin
+   commitear todavía a fecha de esta actualización. Auditoría de secretos
+   de rutina antes de commitear (v13 tiene `.env.example` con el
+   placeholder correcto, sin `.env` real trackeado).
+2. **Validar v13 con hardware real, en el orden pedido:** primero
+   `realtime_voice.py --tracking` (Hito A — voz por terminal + rastreo),
+   después `webrtc_server.py --tracking` (Hito B — voz por navegador +
+   rastreo). Confirmar que la conversación y el rastreo funcionan bien a la
+   vez, sin que el hilo de rastreo afecte la latencia del audio. Es el
+   único punto que falta para que v13 pase de "código completo" a
+   "completa y validada".
+3. **Confirmar el ciclo completo de apagar/encender de v11 de punta a
    punta** — el servicio y el autostart ya están instalados y activos en
    la Pi real (23/08); falta el reinicio de verdad que lo confirme. Es el
    único punto que queda abierto de v11.
-3. **Diagnosticar por qué `~/.asoundrc` desapareció el 23/08** (en vez de
+4. **Diagnosticar por qué `~/.asoundrc` desapareció el 23/08** (en vez de
    solo seguir recreándolo) — ¿lo borra algo al sincronizar con GitHub?
    ¿una limpieza del sistema? No investigado todavía.
-4. **Decidir el destino de `v11/pipewire-aec/`** — ¿se consolida en
+5. **Decidir el destino de `v11/pipewire-aec/`** — ¿se consolida en
    `/home/pi/v11/pipewire-aec/` (moviendo el despliegue real desde
    `/home/pi/voice-chat/`), o se deja como carpeta aparte en la Pi? Cualquiera
    vale, solo falta decidir y, si se mueve, reconfirmar que arranca desde ahí.
-5. **Validar v10 cuando llegue la cámara CSI** — micrófono/parlante USB, cámara,
+6. **Validar v10 cuando llegue la cámara CSI** — micrófono/parlante USB, cámara,
    Pico física. Pasos de instalación completos en `v10/README-v10.md`. Al
    llegar a ese punto, considerar si aplicar a v10 los mismos hallazgos de v11
    (STUN en `static/index.html`, Firefox en vez de Chromium) — decisión
@@ -459,23 +522,22 @@ pendiente de su propio commit** — ver sección 6.
    pena revisar si los tres bugs de rastreo encontrados en v12 (cascada,
    falso positivo, buffer USB) aplican igual a v10 — misma cámara OV5647,
    mismo firmware.
-6. **Retomar la voz sobre v12, ya validada en hardware** — el firmware
-   (`v12/main.py`) ya está listo sin ningún cambio adicional: solo hace
-   falta un cliente que mande `EMOCION` por serial disparado por sentimiento
-   real en vez del ciclo fijo de `rastreo_expresiones.py` (reutilizando el
-   mismo patrón de v8/v9).
-7. **Confirmar el rastreo de v12 en sesiones más largas** (varios minutos u
-   horas seguidas) — validado hasta ahora de forma sostenida pero no en
-   sesiones muy prolongadas.
-8. **Próximas mejoras ya identificadas, sin implementar todavía** (documentadas en
+7. **Retomar el análisis de sentimiento sobre v13, una vez validada en
+   hardware** — el firmware (`v13/main.py`) ya está listo sin ningún cambio
+   adicional: solo hace falta un cliente que mande `EMOCION` por serial
+   disparado por sentimiento real, reutilizando el mismo patrón de v8/v9.
+8. **Confirmar el rastreo de v12/v13 en sesiones más largas** (varios
+   minutos u horas seguidas) — validado hasta ahora de forma sostenida pero
+   no en sesiones muy prolongadas.
+9. **Próximas mejoras ya identificadas, sin implementar todavía** (documentadas en
    `v10/README-v10.md`, sección "Próximos pasos"):
    - Sincronía de párpados con la mirada (pendiente desde v6)
    - Reintroducir joystick y/o modo autónomo, si hacen falta
    - Si `pysentimiento`/`torch` resulta pesado en la Pi 5, considerar un modelo
      más ligero — solo con datos reales de rendimiento en la propia Pi 5
-9. **Validación adicional sugerida para v9, no bloqueante:** sesión larga sin
-   reinicios, y el modo dormido con el `--sleep-timeout` por defecto (60s) en una
-   conversación real y prolongada.
+10. **Validación adicional sugerida para v9, no bloqueante:** sesión larga sin
+    reinicios, y el modo dormido con el `--sleep-timeout` por defecto (60s) en una
+    conversación real y prolongada.
 
 ---
 
@@ -537,6 +599,19 @@ python rastreo_expresiones.py              # Pico + cámara CSI real, ciclo cada
 # confirma su índice con v4l2-ctl --list-devices y pásalo con --camera-index
 ```
 
+**v13 (Raspberry Pi 5 + Pico + voz, pendiente de validar — voz + rastreo juntos):**
+```bash
+cd v13
+sudo apt install -y python3-picamera2 --no-install-recommends  # cámara CSI real
+python3 -m venv --system-site-packages .venv   # --system-site-packages: para ver picamera2
+source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+cp .env.example .env && chmod 600 .env   # y pon tu OPENAI_API_KEY real
+python -m pytest tests/ -v                        # 26 tests
+python realtime_voice.py --barge-in --tracking    # Hito A: terminal, validar primero
+python webrtc_server.py --tracking                # Hito B: navegador, validar después
+```
+
 **v10 (Raspberry Pi 5, pendiente de validar — bloqueada por la cámara CSI):**
 ```bash
 cd v10
@@ -557,6 +632,7 @@ python webrtc_server.py --sentiment --tracking
 ```
 
 Documentación de referencia, de más a menos detallada:
-[`v12/README-v12.md`](v12/README-v12.md) → [`v11/README-v11.md`](v11/README-v11.md)
-→ [`v10/README-v10.md`](v10/README-v10.md) → [`CLAUDE.md`](CLAUDE.md) (mapa de
-todo el proyecto) → [`VERSIONS.md`](VERSIONS.md) (changelog).
+[`v13/README-v13.md`](v13/README-v13.md) → [`v12/README-v12.md`](v12/README-v12.md)
+→ [`v11/README-v11.md`](v11/README-v11.md) → [`v10/README-v10.md`](v10/README-v10.md)
+→ [`CLAUDE.md`](CLAUDE.md) (mapa de todo el proyecto) → [`VERSIONS.md`](VERSIONS.md)
+(changelog).

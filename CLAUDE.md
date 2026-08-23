@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Guía de todo el proyecto para trabajar en este repositorio. Cada versión (`v1/`, `v2/`,
-`v3/`, `v4/`, `v5/`, `v6/`, `v7/`, `v8/`, `v9/`, `v10/`, `v11/`, `v12/`) tiene su propia
+`v3/`, `v4/`, `v5/`, `v6/`, `v7/`, `v8/`, `v9/`, `v10/`, `v11/`, `v12/`, `v13/`) tiene su propia
 documentación detallada; este fichero es el mapa general y recoge los hechos que
 cruzan versiones. Empieza aquí, salta al `CLAUDE-vN.md` o `README-vN.md` de la
 versión concreta cuando necesites el detalle de implementación.
@@ -214,24 +214,50 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
   alguno. 33 tests, todos pasando sin hardware. **✅ Completa y validada en
   hardware real**, con la Pico ciclando las 10 expresiones y el rastreo
   siguiendo un rostro real de forma sostenida en el tiempo.
+- **v13** — pedido explícito del usuario: juntar v11 (voz) y v12 (rastreo +
+  Pico) en el mismo proceso, **todavía sin análisis de sentimiento** — la
+  Pico se queda siempre en `NEUTRAL` (parpadeo normal, sin ninguna
+  expresión que fije la mirada), y solo la posición real del rostro
+  rastreado mueve los ojos. Implementado en el orden pedido explícitamente:
+  primero [`v13/realtime_voice.py`](v13/realtime_voice.py) (retomado de
+  v11, terminal/WebSocket) con `--tracking` nuevo; después
+  [`v13/webrtc_server.py`](v13/webrtc_server.py) (retomado de v11,
+  navegador/WebRTC) con el mismo `--tracking`. `main.py`, `pico_serial.py`
+  y `face_tracker.py` se copian sin cambios de v12 (cámara CSI real, con
+  respaldo automático a webcam USB, y `_drenar_entrada()` ya incluido). El
+  hilo de rastreo (`_hilo_rastreo()`, retomado de
+  `v12/rastreo_expresiones.py`) nunca manda un campo EMOCION —solo
+  `PICO.enviar(lr, ud)`— así que `emocion_actual` en el firmware nunca sale
+  de su valor inicial `NEUTRAL` durante toda la sesión: es la primera vez
+  que `realtime_voice.py` (la vía de terminal) rastrea el rostro en todo el
+  proyecto — hasta v9/v10, solo `webrtc_server.py` lo hacía.
+  `static/index.html` es copia idéntica de v11: el navegador no necesita
+  saber nada del rastreo, que vive enteramente del lado del servidor. 26
+  tests (heredados de v12 sin cambios: `FaceTracker`/`PicoLink`/
+  `estado_base.py`; sin tests nuevos, porque no hay lógica pura nueva que
+  probar sin hardware — mismo criterio que usó v9 para su propio hilo de
+  rastreo). **Código completo, sin validar todavía en hardware real** —
+  igual situación en la que quedaron v10 y v12 al escribirse.
 
 **Regla del proyecto, válida para todas las versiones: ninguna versión importa
 código de otra carpeta de versión.** v2 es una copia de v1 con el añadido de
-sentimiento, no un import de v1. v4, v5, v6, v7, v9, v10 y v12 tienen sus propias
-copias de `face_tracker.py` y `pico_serial.py` (misma lógica entre sí y con v3;
-v10 adapta `pico_serial.py` para Linux y `face_tracker.py` para cámara CSI; v12
-reutiliza el `pico_serial.py` ya adaptado por v10 (con un método nuevo,
-`_drenar_entrada()`, añadido tras validar en hardware real) y porta a
+sentimiento, no un import de v1. v4, v5, v6, v7, v9, v10, v12 y v13 tienen sus
+propias copias de `face_tracker.py` y `pico_serial.py` (misma lógica entre sí y
+con v3; v10 adapta `pico_serial.py` para Linux y `face_tracker.py` para cámara
+CSI; v12 reutiliza el `pico_serial.py` ya adaptado por v10 (con un método
+nuevo, `_drenar_entrada()`, añadido tras validar en hardware real) y porta a
 `face_tracker.py` el mismo soporte de cámara CSI que v10, con la webcam USB
-como respaldo — ver su sección más abajo; adaptar no es lo mismo que
-importar), no las importan con una ruta relativa cruzada. v8 sigue el
-mismo patrón para lo que sí reutiliza (`pico_serial.py` de v7,
-`realtime_voice.py`/`sentiment_analyzer.py` de v2), pero **no** copia
+como respaldo; v13 retoma ambos sin cambios de v12 — ver su sección más abajo;
+adaptar no es lo mismo que importar), no las importan con una ruta relativa
+cruzada. v8 sigue el mismo patrón para lo que sí reutiliza (`pico_serial.py`
+de v7, `realtime_voice.py`/`sentiment_analyzer.py` de v2), pero **no** copia
 `face_tracker.py`: v8 no rastrea el rostro todavía, a propósito (ver sección de v8),
 así que ese fichero simplemente no aplica en esa versión — ausencia deliberada, no
 un descuido. v9 retoma `face_tracker.py` desde v7 (ver sección de v9); v10 lo
 adapta desde v9 para la cámara CSI; v12 retoma `main.py` sin cambios desde v9 y
-`pico_serial.py` sin cambios desde v10 (mismo cliente Linux). Esto es deliberado y se pidió explícitamente:
+`pico_serial.py` sin cambios desde v10 (mismo cliente Linux); v13 retoma
+`realtime_voice.py`/`webrtc_server.py`/`static/index.html` sin cambios de v11 y
+`main.py`/`pico_serial.py`/`face_tracker.py` sin cambios de v12. Esto es deliberado y se pidió explícitamente:
 **cada versión debe poder ejecutarse borrando todas las demás carpetas de
 versión.** Si añades una versión nueva que reutiliza algo de otra, copia el
 fichero, no lo importes. Excepción deliberada: `v5/main_pca9685.py` (la versión
@@ -239,24 +265,24 @@ retirada del firmware) no se copió a v6 ni v7, porque no es "base funcional" �
 código explícitamente no usado, y su historial ya vive en `v5/README-v5.md`.
 
 Cada carpeta de versión de cliente (v1/v2/v3 y la parte Mac de v4/v5/v6/v7/v8/v9;
-la parte Raspberry Pi 5 de v10/v11/v12) tiene su propio `.venv/`, `requirements.txt`
-y `.env` (salvo v12, que no toca voz y no necesita ningún `.env`/`OPENAI_API_KEY` —
-ver su sección más abajo). En v10 y v12 el venv debe crearse con
-`--system-site-packages` — ver `v10/README-v10.md` y `v12/README-v12.md` —
-porque `picamera2` se instala por `apt`, no por `pip`, y un venv normal no
-vería ese paquete: las dos usan cámara CSI en el hardware real (v12 se
-planificó primero con webcam USB, pero la Pi 5 real resultó tener cámara CSI
-— ver la sección de v12 más arriba). v11 es la única de las tres sin esa
-restricción: no usa cámara ni Pico, así que su venv es un
-`python3 -m venv .venv` normal.
+la parte Raspberry Pi 5 de v10/v11/v12/v13) tiene su propio `.venv/`,
+`requirements.txt` y `.env` (salvo v12, que no toca voz y no necesita ningún
+`.env`/`OPENAI_API_KEY` — ver su sección más abajo). En v10, v12 y v13 el venv
+debe crearse con `--system-site-packages` — ver `v10/README-v10.md`,
+`v12/README-v12.md` y `v13/README-v13.md` — porque `picamera2` se instala por
+`apt`, no por `pip`, y un venv normal no vería ese paquete: las tres usan
+cámara CSI en el hardware real (v12 se planificó primero con webcam USB, pero
+la Pi 5 real resultó tener cámara CSI — ver la sección de v12 más arriba; v13
+hereda esa misma cámara). v11 es la única de las cuatro sin esa restricción:
+no usa cámara ni Pico, así que su venv es un `python3 -m venv .venv` normal.
 
-**Las piezas que rompen el patrón de venv son `main.py` (v4/v5/v6/v7/v8/v9/v10/v12) y
-`estado_base.py` (v6/v7/v8/v9/v10/v12):** no tienen entorno porque no son Python que
-corra en el cliente (Mac o Pi 5) — son firmware MicroPython que se copia a la Pico
-(con Thonny o `mpremote`) y se ejecuta ahí, sin que le importe qué máquina le habla
-por serial. El resto de v4/v5/v6/v7/v8/v9/v10/v12 (`pico_serial.py` y, en v4-v7, v9,
-v10 y v12, `face_tracker.py`; sus tests) sí sigue el patrón normal de venv, igual
-que v1/v2/v3.
+**Las piezas que rompen el patrón de venv son `main.py` (v4/v5/v6/v7/v8/v9/v10/v12/v13) y
+`estado_base.py` (v6/v7/v8/v9/v10/v12/v13):** no tienen entorno porque no son
+Python que corra en el cliente (Mac o Pi 5) — son firmware MicroPython que se
+copia a la Pico (con Thonny o `mpremote`) y se ejecuta ahí, sin que le importe
+qué máquina le habla por serial. El resto de v4/v5/v6/v7/v8/v9/v10/v12/v13
+(`pico_serial.py` y, en v4-v7, v9, v10, v12 y v13, `face_tracker.py`; sus
+tests) sí sigue el patrón normal de venv, igual que v1/v2/v3.
 
 ## Entorno, por versión
 
@@ -1154,6 +1180,78 @@ facial siguiendo un rostro real de forma continua y sostenida en el tiempo
 tras los tres fixes de arriba. Detalle completo:
 [`v12/README-v12.md`](v12/README-v12.md), [`v12/PLAN-v12.md`](v12/PLAN-v12.md)
 y [`v12/MODIFICACIONES-LOCALES.md`](v12/MODIFICACIONES-LOCALES.md).
+
+## v13 — Voz en tiempo real + rastreo facial real, sin sentimiento todavía
+
+Pedido explícito del usuario: juntar en el mismo proceso las dos piezas que
+hasta ahora se habían validado por separado en la Raspberry Pi 5 — la
+conversación de voz (v11) y el rastreo facial real con control de la Pico
+(v12) — **todavía sin análisis de sentimiento**. Implementado en el orden
+pedido explícitamente: primero
+[`v13/realtime_voice.py`](v13/realtime_voice.py) (Hito 2), después
+[`v13/webrtc_server.py`](v13/webrtc_server.py) (Hito 3).
+
+**Por qué la expresión se queda siempre en NEUTRAL, sin tocar el
+firmware.** El hilo de rastreo (`_hilo_rastreo()`, retomado sin cambios de
+`v12/rastreo_expresiones.py`) nunca manda un campo EMOCION — solo
+`PICO.enviar(lr, ud)`. Como `main.py` (sin cambios desde v8) solo cambia de
+expresión al recibir un EMOCION válido, `emocion_actual` nunca sale de su
+valor inicial, `NEUTRAL`, durante toda la sesión. Esto no es un caso
+especial que haya hecho falta programar: es la consecuencia directa de que
+el hilo de rastreo nunca envíe ese campo. Efectos concretos, pedidos
+explícitamente y ya garantizados por el propio firmware sin cambios: el
+parpadeo periódico sigue activo con normalidad (solo se desactiva con
+`DORMIDO`, que aquí nunca se manda), los párpados quedan en su posición de
+reposo, y ninguna de las tres expresiones que fijan la mirada por su cuenta
+(`DUDA`/`PENSATIVO`/`NERVIOSO`) se activa nunca — la mirada real del
+rastreo tiene siempre la última palabra.
+
+**`realtime_voice.py` rastreando el rostro es una novedad real, no solo una
+copia.** Hasta v9/v10, solo `webrtc_server.py` tenía `--tracking`;
+`realtime_voice.py` (la vía de terminal, retomada de v11 sin cambios en la
+parte de audio) nunca lo había hecho. v13 añade `--tracking` ahí por
+primera vez: `_iniciar_tracking()` abre la Pico y la cámara (CSI primero,
+con el mismo respaldo automático a webcam USB que
+`v12/rastreo_expresiones.py`) y lanza el hilo de rastreo daemon *antes* de
+`asyncio.run(run(...))`, devolviendo la cámara y el evento de parada para
+que el `finally` de `main()` los libere sin tocar la lógica interna de
+`run()`. `webrtc_server.py` reutiliza el mecanismo que v9/v10 ya habían
+validado para esta misma pieza, sin la parte de sentimiento que v9 sí tenía
+(`--sentiment`, `_handle_analyze_sentiment`) — v13 no la trae, a propósito.
+
+**Corregido durante el propio desarrollo, antes de darlo por completo:** el
+mensaje de resumen de `webrtc_server.py` decía "Rastreo facial: ACTIVO"
+incluso cuando la cámara había fallado en abrirse (arrastrado del mismo
+patrón que ya tenía v9). Se introdujo `rastreo_activo`, una variable local
+que solo se pone a `True` si el hilo de rastreo realmente llegó a
+lanzarse, y el mensaje ahora distingue "pedido con --tracking, pero sin
+cámara disponible" de "ACTIVO" — confirmado en el propio arranque de
+prueba, con una clave de API falsa y sin cámara en este entorno.
+
+**`main.py`, `pico_serial.py` y `face_tracker.py` se copian sin ningún
+cambio de v12** (cámara CSI real con respaldo USB, parámetros de detección
+calibrados en hardware, `_drenar_entrada()` ya incluido para el bug del
+buffer USB). `static/index.html` es copia idéntica de v11: el navegador no
+necesita saber nada del rastreo, que vive enteramente del lado del
+servidor — ni STUN ni autoconexión necesitaron tocarse.
+
+**Cómo se verificó:** sintaxis de los 4 ficheros `.py` del lado cliente, y
+26 tests (heredados sin cambios de v12: 8 de `FaceTracker`, 12 de
+`pico_serial.py`, 4 de `estado_base.py` — sin tests nuevos, porque no hay
+lógica pura nueva que valga la pena probar sin hardware, mismo criterio que
+usó v9 para su propio hilo de rastreo). Arranque real de
+`realtime_voice.py --tracking` y `webrtc_server.py --tracking` con una
+clave de API falsa, sin Pico, sin `picamera2` y sin permiso de cámara en
+este entorno: la cadena de respaldo completa (CSI → USB → sin cámara)
+degrada limpiamente en cada paso, y la conversación de voz sigue su curso
+hasta el punto de necesitar una clave real. **Sin validar todavía en
+hardware real** — igual situación en la que quedaron v10 y v12 al
+escribirse; la pieza con más incertidumbre real, que ningún test sin
+hardware puede confirmar, es si la conversación de voz y el hilo de
+rastreo compiten por CPU de forma perceptible en la Pi 5 real (v9 ya
+confirmó que conviven bien en un Mac, pero no se ha repetido esa
+confirmación aquí). Detalle completo:
+[`v13/README-v13.md`](v13/README-v13.md) y [`v13/PLAN-v13.md`](v13/PLAN-v13.md).
 
 ## Cómo verificar cambios (todas las versiones)
 

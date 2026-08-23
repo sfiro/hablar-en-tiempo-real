@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Asistente de voz — Realtime API</title>
+<!--
+  Copia idéntica de v11/static/index.html (validada en hardware real,
+  Raspberry Pi 5 + Firefox, 22/08/2026). El navegador no necesita saber nada
+  del rastreo facial de v13: la cámara y la Pico las gestiona
+  webrtc_server.py del lado del servidor, en un hilo de fondo — esta página
+  solo negocia audio por WebRTC, exactamente igual que en v11.
+
+  Trae `iceServers` (STUN, Google + Twilio): sin ellos, RTCPeerConnection
+  solo reunía candidatos "host" (IP local) — inalcanzables para OpenAI a
+  través de la red de la Pi 5, así que ICE nunca llegaba a "connected" (la
+  negociación SDP daba 200, pero sin audio). También trae `?auto=1` en la
+  URL para disparar la conexión sola (modo kiosko sin teclado ni ratón), y
+  un heartbeat `report()` que manda el estado por GET /st?msg=... (solo
+  útil con --verbose, para hacer grep del estado de ICE desde fuera del
+  navegador).
+-->
+<style>
+  body { font-family: system-ui, sans-serif; background: #111; color: #eee;
+         display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 2rem; }
+  button { font-size: 1.2rem; padding: .8rem 1.6rem; border: 0; border-radius: 8px;
+           background: #2d7; color: #111; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { color: #aaa; font-size: .9rem; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#555; margin-right:6px; }
+  .dot.on { background:#2d7; }
+</style>
+</head>
+<body>
+  <h1>🎙️ Asistente de voz</h1>
+  <button id="connect">Conectar</button>
+  <div id="status"><span class="dot" id="dot"></span>Desconectado</div>
+  <div id="log"></div>
+
+<script>
+const btn = document.getElementById('connect');
+const statusEl = document.getElementById('status');
+const dot = document.getElementById('dot');
+const logEl = document.getElementById('log');
+let pc = null;
+
+function setStatus(text, ok) {
+  statusEl.innerHTML = `<span class="dot ${ok ? 'on' : ''}"></span>${text}`;
+}
+function log(msg) {
+  const line = document.createElement('div');
+  line.textContent = msg;
+  logEl.prepend(line);
+}
+// Heartbeat: reporta estado al servidor local (aparece en su log con --verbose)
+function report(msg) {
+  try { fetch('/st?msg=' + encodeURIComponent(msg)).catch(() => {}); } catch (e) {}
+}
+
+// Auto-conexión: si la URL lleva ?auto=1, conectar sin clic (modo kiosko/headless)
+if (new URLSearchParams(location.search).get('auto') === '1') {
+  setTimeout(() => btn.click(), 500);
+}
+
+btn.addEventListener('click', async () => {
+  btn.disabled = true;
+  try {
+    // 1. Micro con cancelación de eco del navegador
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+
+    // 2. Conexión WebRTC — con STUN para que OpenAI pueda alcanzar este equipo
+    pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:global.stun.twilio.com:3478' }
+      ]
+    });
+    stream.getTracks().forEach(t => pc.addTrack(t, stream));
+    pc.addEventListener('track', e => {
+      const audio = new Audio();
+      audio.srcObject = e.streams[0];
+      audio.autoplay = true;
+      audio.play();
+      setStatus('Conectado — habla', true);
+      log('🔊 Audio del asistente conectado');
+      report('TRACK: audio asistente');
+    });
+
+    // Diagnóstico: registrar cambios de estado ICE
+    pc.addEventListener('iceconnectionstatechange', () => {
+      log('🧊 ICE: ' + pc.iceConnectionState);
+      report('ICE: ' + pc.iceConnectionState);
+      if (pc.iceConnectionState === 'connected') setStatus('Conectado — habla', true);
+      if (pc.iceConnectionState === 'failed') setStatus('Error: ICE falló', false);
+    });
+
+    // 3. Negociar SDP con nuestro servidor local (que firma con la API key)
+    pc.addEventListener('negotiationneeded', async () => {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      // Esperar a que termine de recolectar candidatos (STUN) antes de enviar
+      const gathered = new Promise(res => {
+        pc.addEventListener('icegatheringstatechange', () => {
+          if (pc.iceGatheringState === 'complete') res();
+        });
+      });
+      if (pc.iceGatheringState !== 'complete') await gathered;
+      const resp = await fetch('/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/sdp' },
+        body: offer.sdp,
+      });
+      if (!resp.ok) throw new Error('Negociación falló: ' + await resp.text());
+      const answer = await resp.text();
+      await pc.setRemoteDescription({ type: 'answer', sdp: answer });
+      setStatus('Conectando…', false);
+    });
+
+    setStatus('Conectando…', false);
+    report('conectando…');
+  } catch (err) {
+    setStatus('Error: ' + err.message, false);
+    log('❌ ' + err.message);
+    report('ERROR: ' + err.message);
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
