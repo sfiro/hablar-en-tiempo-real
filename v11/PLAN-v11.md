@@ -174,6 +174,14 @@ eco real a nivel de sistema con PipeWire, no los paliativos de
 - [x] `voice-chat.service`: despliega `voice_chat.py` como servicio,
       `Restart=always`, con el Python del sistema (sin venv, a diferencia
       del resto del proyecto)
+- [x] **Bug real encontrado y corregido, 23/08, en el propio `.service`:**
+      corría como root (sin `User=`) — sin acceso a los sockets de
+      PipeWire de la sesión del usuario `pi`, fallaba con
+      `Permission denied`. Corregido con `User=pi`, `Group=pi`, y
+      `Environment=XDG_RUNTIME_DIR=/run/user/1000`. Un segundo problema en
+      el mismo archivo: `StandardOutput/StandardError=append:...` hacía
+      fallar el arranque del servicio (`status=209/STDOUT`) — quitado,
+      logs al journal (`journalctl -u voice-chat -f`)
 - [x] **Bug encontrado en la exportación, corregido:** `voice_rest.py`
       (un segundo script, más simple, Whisper→GPT→TTS sin Realtime API)
       llegó con la lectura de `OPENAI_API_KEY` corrompida

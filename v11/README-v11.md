@@ -308,6 +308,19 @@ prefieres tenerlo todo bajo `v11/`, copia esta carpeta a
 (`ExecStartPre`, `ExecStart`, `WorkingDirectory`) — no probado en esa
 ubicación nueva.
 
+**Bug real encontrado y corregido, el 23/08, en el propio `.service`:** la
+primera versión no fijaba `User=`, así que systemd lo corría como
+**root** — sin acceso a los sockets de PipeWire de la sesión del usuario
+`pi` (`/run/user/1000`), fallaba con `Permission denied` al arrancar.
+Corregido añadiendo `User=pi`, `Group=pi` y
+`Environment=XDG_RUNTIME_DIR=/run/user/1000` (necesario para que
+`pactl`/`paplay`/`parec` encuentren la instancia de PipeWire del usuario,
+no la de root). Un segundo problema, en el mismo archivo: la redirección
+de logs con `StandardOutput/StandardError=append:/tmp/vc_realtime.log`
+hacía que systemd fallara al arrancar el propio servicio
+(`status=209/STDOUT`) — quitada, los logs van ahora al journal
+(`journalctl -u voice-chat -f`).
+
 **`voice_rest.py`**, en la misma carpeta, es un enfoque distinto y más
 simple: no usa la Realtime API en absoluto — graba un turno fijo de 5s,
 transcribe con Whisper, pide una respuesta a `gpt-4o-mini`, la convierte a

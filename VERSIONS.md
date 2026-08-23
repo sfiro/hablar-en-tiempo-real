@@ -533,6 +533,12 @@ en la Raspberry Pi 5 en vez del Mac.
   independientes con `webrtc.extended_filter`/`delay_agnostic`
 - ✅ `voice-chat.service`: despliegue como servicio, `Restart=always`,
   validado en `/home/pi/voice-chat/` (carpeta distinta de `/home/pi/v11/`)
+- ✅ **Bug real encontrado y corregido, 23/08:** el `.service` corría como
+  root (sin `User=`), sin acceso a los sockets de PipeWire de la sesión del
+  usuario `pi` — `Permission denied` al arrancar. Corregido con `User=pi`,
+  `Group=pi`, `Environment=XDG_RUNTIME_DIR=/run/user/1000`; el
+  `StandardOutput/StandardError=append:...` también hacía fallar el
+  arranque del servicio (`status=209/STDOUT`) — logs al journal en su lugar
 - ✅ **Bug encontrado y corregido:** `voice_rest.py` (script alternativo,
   Whisper→GPT→TTS, no Realtime API) llegó con la lectura de
   `OPENAI_API_KEY` corrompida por la exportación — reconstruida con el

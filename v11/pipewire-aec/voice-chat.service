@@ -1,14 +1,28 @@
-# Validado tal cual, desplegado en /home/pi/voice-chat/ — una carpeta
-# DISTINTA de /home/pi/v11/. Si prefieres tenerlo todo junto dentro de
-# v11/, copia esta carpeta a /home/pi/v11/pipewire-aec/ y ajusta las tres
-# rutas de abajo (ExecStartPre, ExecStart, WorkingDirectory) en consecuencia
-# — no probado en esa ubicación nueva, solo en la original.
+# Servicio systemd de la vía pipewire-aec (voz por consola con AEC real).
+#
+# CORREGIDO el 23/08/2026 tras validación en la Pi 5 de Debbie — la versión
+# anterior estaba rota:
+#   - Añadido User=pi / Group=pi: sin esto el servicio corría como root y no
+#     podía acceder a los sockets de PipeWire (/run/user/1000) ni escribir en
+#     /tmp/vc_realtime.log (Permission denied al arrancar).
+#   - Añadido Environment=XDG_RUNTIME_DIR=/run/user/1000: necesario para que
+#     pactl/paplay/parec encuentren la instancia de PipeWire del usuario.
+#   - Eliminado StandardOutput/StandardError=append:/tmp/vc_realtime.log:
+#     systemd fallaba al configurar el append (status 209/STDOUT). Los logs
+#     van ahora al journal: `journalctl -u voice-chat -f`.
+#
+# Desplegado validado en /home/pi/voice-chat/ (carpeta DISTINTA de
+# /home/pi/v11/). Si prefieres tenerlo todo junto dentro de v11/, copia esta
+# carpeta a /home/pi/v11/pipewire-aec/ y ajusta las tres rutas de abajo
+# (ExecStartPre, ExecStart, WorkingDirectory) en consecuencia — no probado en
+# esa ubicación nueva, solo en la original.
 #
 # Nota: usa /usr/bin/python3 (el Python del sistema), no un venv — distinto
 # del resto de este proyecto. Si el sistema tiene "externally-managed-
 # environment" (Raspberry Pi OS Bookworm+), instalar websockets/numpy a
 # nivel de sistema puede necesitar `pip install --break-system-packages`
 # o el paquete de apt equivalente.
+
 [Unit]
 Description=GPT Realtime Voice Chat
 After=network-online.target sound.target pipewire.service pipewire-pulse.service wireplumber.service
@@ -16,14 +30,15 @@ Wants=network-online.target pipewire.service pipewire-pulse.service wireplumber.
 
 [Service]
 Type=simple
+User=pi
+Group=pi
+Environment=XDG_RUNTIME_DIR=/run/user/1000
 ExecStartPre=/bin/sleep 2
 ExecStartPre=/home/pi/voice-chat/aec-load.sh
 ExecStart=/usr/bin/python3 -u /home/pi/voice-chat/voice_chat.py
 WorkingDirectory=/home/pi/voice-chat
 Restart=always
 RestartSec=5
-StandardOutput=append:/tmp/vc_realtime.log
-StandardError=append:/tmp/vc_realtime.log
 
 [Install]
 WantedBy=default.target

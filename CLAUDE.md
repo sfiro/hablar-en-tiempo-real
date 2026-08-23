@@ -967,6 +967,12 @@ carpeta, `voice_rest.py` (Whisper→GPT→TTS, no Realtime API, más simple y
 lento), llegó con la lectura de `OPENAI_API_KEY` corrompida por la
 exportación (`API_KEY = ***`) — reconstruida con el mismo patrón de lectura
 de `.env` que usa `voice_chat.py`, a petición explícita del usuario.
+**Bug real encontrado y corregido el 23/08 en `voice-chat.service`:**
+corría como root (sin `User=`), sin acceso a los sockets de PipeWire de la
+sesión del usuario `pi` — fallaba con `Permission denied`. Corregido con
+`User=pi`, `Group=pi` y `Environment=XDG_RUNTIME_DIR=/run/user/1000`;
+además, `StandardOutput/StandardError=append:...` hacía fallar el propio
+arranque del servicio (`status=209/STDOUT`) — quitado, logs al journal.
 
 ## Cómo verificar cambios (todas las versiones)
 

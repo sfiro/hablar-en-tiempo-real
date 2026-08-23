@@ -275,12 +275,27 @@ Hablar en tiempo real/
     CDP de Chromium, obsoleto — recomendación del propio usuario de no
     subirlo). Documentación de `v11/README-v11.md`/`PLAN-v11.md` corregida
     para reflejar el estado real (instalado y activo, no solo "sin validar").
-    Segundo commit y push pendientes de esta corrección — ver sección 6.
+    Commiteado y subido (`f010599`).
+13. **Corregido `v11/pipewire-aec/voice-chat.service` — estaba roto.** El
+    usuario probó el servicio en la Pi real y confirmó que el `.service`
+    original (el que yo había subido en el punto 10) tenía dos bugs reales:
+    corría como root, sin `User=`, así que no podía acceder a los sockets
+    de PipeWire de la sesión del usuario `pi` (`Permission denied`); y la
+    redirección de logs con `append:/tmp/vc_realtime.log` hacía fallar el
+    arranque del propio servicio (`status=209/STDOUT`). El usuario preparó
+    la versión corregida (`User=pi`, `Group=pi`,
+    `XDG_RUNTIME_DIR=/run/user/1000`, logs al journal) y la pasó para que
+    reemplazara la del repo — hecho, junto con la documentación
+    correspondiente en `README-v11.md`/`PLAN-v11.md`/`CLAUDE.md`/
+    `VERSIONS.md`. También confirmó que la versión ya subida de
+    `README-IMPLEMENTACION.md` era idéntica a la que él tenía — sin cambios
+    ahí.
 
-**Todo lo de los puntos 1-10 está commiteado y subido a GitHub** (commit
-`c8f6df7`, rama `main`, remoto `origin`). El punto 11 (subida) y el 12
-(README-IMPLEMENTACION.md + correcciones de estado) son de esta misma
-sesión — el 12 todavía no tiene su propio commit, ver sección 6.
+**Todo lo de los puntos 1-13 está commiteado y subido a GitHub**, salvo el
+13 (la corrección de `voice-chat.service`), que es de este mismo turno y
+está pendiente de su propio commit — ver sección 6. Commits hasta ahora:
+`c8f6df7` (v9+v10+v11+documentación) y `f010599`
+(README-IMPLEMENTACION.md + correcciones de estado), ambos en `main`.
 
 ---
 
@@ -319,10 +334,9 @@ sesión — el 12 todavía no tiene su propio commit, ver sección 6.
 
 ## 6. Pasos a seguir
 
-1. **Commitear y subir el punto 12** (`v11/README-IMPLEMENTACION.md` +
-   correcciones de estado en `README-v11.md`/`PLAN-v11.md`/`CLAUDE.md`/
-   `README.md`/`VERSIONS.md`) — todavía no tiene commit propio. Preguntar
-   antes de comitear, como siempre.
+1. **Commitear y subir el punto 13** (fix de `voice-chat.service` +
+   documentación correspondiente) — todavía no tiene commit propio.
+   Preguntar antes de comitear, como siempre.
 2. **Confirmar el ciclo completo de apagar/encender de v11 de punta a
    punta** — el servicio y el autostart ya están instalados y activos en
    la Pi real (23/08); falta el reinicio de verdad que lo confirme. Es el
