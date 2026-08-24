@@ -649,7 +649,7 @@ Detalle de hitos: [`v12/PLAN-v12.md`](v12/PLAN-v12.md).
 
 ---
 
-## v13.0.0 🔄 — Voz en tiempo real + rastreo facial real, sin sentimiento todavía (código completo, validación pendiente)
+## v13.0.0 ✅ — Voz en tiempo real + rastreo facial real, sin sentimiento todavía (validada en hardware real)
 
 **Objetivo:** juntar en el mismo proceso las dos piezas ya validadas por
 separado en la Raspberry Pi 5: la conversación de voz (v11) y el rastreo
@@ -704,15 +704,39 @@ clave de API falsa: sirve la página con normalidad; sin cámara disponible,
 el mensaje corregido dice "pedido con --tracking, pero sin cámara
 disponible" en vez de "ACTIVO".
 
-**Pendiente, el único punto que falta:**
-- [ ] **Validar con hardware real:** Raspberry Pi 5 con Pico física, cámara
-  (CSI u USB), micrófono/parlante, y una conversación hablada de verdad
-  viendo el rastreo funcionar a la vez — Hito 2 primero, Hito 3 después.
-- [ ] Análisis de sentimiento — explícitamente fuera de alcance de v13,
-  para una v14 posterior.
+**Hito 4: Validación en hardware real — bug de eco y arquitectura de dos procesos — COMPLETADO**
+- ✅ **Bug real, de configuración, no de código: realimentación de audio.**
+  Causa: se cargó el módulo de cancelación de eco de PipeWire (pensado
+  para la vía de terminal con AEC de sistema) a la vez que se desactivaba
+  la cancelación de eco del navegador — dos capas de AEC mal combinadas.
+  Fix: ninguno de código (`static/index.html` ya traía `echoCancellation:
+  true` correcto desde v11); regla documentada: una sola capa de AEC,
+  nunca mezclar navegador + PipeWire
+- ✅ **Hallazgo de arquitectura, confirmado con mediciones:** rastreo + voz
+  por navegador en un proceso, carga ~3.25; en procesos separados, ~2.1.
+  Arquitectura recomendada para uso real por navegador: dos procesos —
+  nuevo `rastreo_expresiones.py` (retomado de v12 sin cambios de lógica,
+  cámara + Pico + ciclo de 10 expresiones) y `webrtc_server.py` **sin**
+  `--tracking` (solo voz)
+- ✅ `FPS_CAMARA` (nuevo, 5 en vez de los 15 de v12) en `face_tracker.py`:
+  v13 comparte CPU con el audio en tiempo real, algo que v12 no tenía que
+  considerar
+- ✅ `--tracking` integrado en un proceso (Hitos 2-3) se mantiene funcional,
+  documentado ahora como válido para pruebas rápidas o la vía de terminal,
+  no como la configuración de producción recomendada para el navegador
+- ✅ 7 tests nuevos para `rastreo_expresiones.py` (migrados de v12) — 33
+  tests en total
+- ✅ Notas de infraestructura: el power-save del WiFi puede cortar ICE a
+  los ~35s (hay que desactivarlo a nivel de sistema); la vía de terminal
+  con AEC de PipeWire y la vía web no deben correr a la vez
 
-26 tests en total (heredados de v12 sin cambios). Detalle completo:
-[`v13/PLAN-v13.md`](v13/PLAN-v13.md).
+**Confirmado en hardware real, con la arquitectura de dos procesos:** voz
+por navegador clara, sin eco ni autointerrupción, con el rastreo facial y
+el ciclo de expresiones funcionando a la vez, de forma sostenida.
+
+33 tests en total. Diario completo de la validación, con mediciones:
+[`v13/MODIFICACIONES-LOCALES.md`](v13/MODIFICACIONES-LOCALES.md). Detalle
+de hitos: [`v13/PLAN-v13.md`](v13/PLAN-v13.md).
 
 ---
 
@@ -770,7 +794,7 @@ cd v2             # entra en v2
 | v10.0.0 | 🔄 Código completo, falta validar en hardware real | Raspberry Pi Pico (MicroPython) + **Raspberry Pi 5** + cámara CSI |
 | v11.0.0 | ✅ Validada en hardware real (terminal, navegador y AEC PipeWire); autoarranque instalado y activo, ciclo completo sin confirmar | **Raspberry Pi 5** (sin Pico ni cámara) |
 | v12.0.0 | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) + **Raspberry Pi 5** + cámara CSI (sin voz) |
-| v13.0.0 | 🔄 Código completo, falta validar en hardware real | Raspberry Pi Pico (MicroPython) + **Raspberry Pi 5** + cámara CSI + micro/parlante USB (sin sentimiento) |
+| v13.0.0 | ✅ Completa y validada en hardware real | Raspberry Pi Pico (MicroPython) + **Raspberry Pi 5** + cámara CSI + micro/parlante USB (sin sentimiento) |
 
 ---
 
@@ -786,4 +810,4 @@ Cada versión vive en su carpeta. Si quieres trabajar en v2 mientras otros usan 
 
 ---
 
-**Última actualización:** Agosto 23, 2026 (v13: junta voz en tiempo real de v11 con rastreo facial real de v12 en el mismo proceso, sin sentimiento todavía — código completo, validación pendiente)
+**Última actualización:** Agosto 23, 2026 (v13: validada en hardware real — voz + rastreo funcionando a la vez con una arquitectura de dos procesos, tras corregir un bug de configuración de eco de audio)

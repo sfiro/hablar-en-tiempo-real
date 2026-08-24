@@ -32,6 +32,16 @@ README-v13.md). Esta es la alternativa de terminal, sin cancelación de eco
 real (usa los paliativos de v1: `MicGate`, `BargeInDetector`, half-duplex) —
 `webrtc_server.py`, con el navegador, es la vía recomendada (Hito B de v13).
 
+**Nota tras validar en hardware (ver MODIFICACIONES-LOCALES.md):** en la vía
+de navegador, combinar rastreo y voz en el mismo proceso demostró competir
+por CPU con el audio en tiempo real lo bastante como para colar eco —
+resuelto ahí corriendo `rastreo_expresiones.py` como proceso aparte. No se
+midió el mismo problema en esta vía de terminal (no depende del mismo
+mecanismo de cancelación de eco), pero el mismo principio de "cada pieza con
+su propio recurso" aplica igual si notas audio entrecortado con
+`--tracking` activo — en ese caso, usa `rastreo_expresiones.py` en un
+proceso aparte.
+
 Requisitos:  pip install -r requirements.txt
 Variable de entorno:  OPENAI_API_KEY  (se lee del entorno o del fichero .env)
 

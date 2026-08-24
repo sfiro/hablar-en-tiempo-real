@@ -33,11 +33,24 @@ NEUTRAL durante toda la sesión — parpadeo normal, sin que
 DUDA/PENSATIVO/NERVIOSO se disparen nunca y sin que nada fije la mirada por
 su cuenta.
 
+**Hallazgo real al validar en hardware (ver MODIFICACIONES-LOCALES.md):**
+`--tracking` en este mismo proceso funciona, pero compite por CPU con el
+procesamiento de audio en tiempo real lo bastante como para que se cuele
+eco (carga del sistema ~3.25 combinado frente a ~2.1 con el rastreo en su
+propio proceso). **Para uso real por navegador, la combinación validada y
+recomendada es correr `rastreo_expresiones.py` aparte (rastreo + Pico) y
+`webrtc_server.py` SIN `--tracking` (solo voz)** — dos procesos, cada uno
+con su propio recurso. `--tracking` aquí sigue siendo útil para pruebas
+rápidas o para confirmar que el rastreo funciona antes de separarlo.
+
 Uso:
     python webrtc_server.py
-    python webrtc_server.py --tracking
-    python webrtc_server.py --tracking --no-pico    # rastreo sin mover servos
+    python webrtc_server.py --tracking                # combinado: ver la nota de arriba
+    python webrtc_server.py --tracking --no-pico      # rastreo sin mover servos
     python webrtc_server.py --voice cedar --port 8080
+    # Recomendado para uso real (dos procesos separados):
+    #   python rastreo_expresiones.py        (terminal 1)
+    #   python webrtc_server.py --no-browser (terminal 2)
 """
 
 import argparse

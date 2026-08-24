@@ -33,11 +33,12 @@ de v9, sin cambios— ciclando las 10 expresiones cada 5s con la mirada real
 de la cámara CSI de la Pi 5; tres bugs reales corregidos tras validar
 —cascada mal calibrada, falso positivo secuestrando la mirada, y el buffer
 USB de la Pico desbordándose—; todavía sin conversación de voz, a
-propósito) · v13 código completo, validación en hardware pendiente (junta
-v11 + v12: voz en tiempo real, primero por terminal y después por
-navegador, con rastreo facial real corriendo a la vez; sin sentimiento
-todavía, la Pico se queda siempre en NEUTRAL con parpadeo normal mientras
-la mirada sigue al rostro real).
+propósito) · v13 **validada en hardware real** (junta v11 + v12: voz en
+tiempo real, primero por terminal y después por navegador, con rastreo
+facial real corriendo a la vez; sin sentimiento todavía; hallazgo real de
+arquitectura — voz y rastreo en un mismo proceso compiten por CPU con el
+audio del navegador, así que la combinación validada para uso real es dos
+procesos separados: rastreo+expresiones aparte, voz sin `--tracking`).
 
 ## 📦 Versiones disponibles
 
@@ -410,39 +411,44 @@ python rastreo_expresiones.py              # Pico + cámara real, ciclo cada 5s
 
 Ver [`v12/README-v12.md`](v12/README-v12.md) y [`v12/PLAN-v12.md`](v12/PLAN-v12.md).
 
-### [v13](v13/) — Voz en tiempo real + rastreo facial real, sin sentimiento todavía 🔄 (código completo, validación pendiente)
+### [v13](v13/) — Voz en tiempo real + rastreo facial real, sin sentimiento todavía ✅ (validada en hardware real)
 **Estado:** Junta las dos piezas validadas por separado en la Raspberry Pi
 5 — la conversación de voz (v11) y el rastreo facial real con control de
-la Pico (v12) — en el mismo proceso. **Todavía sin análisis de
-sentimiento**: la Pico se queda siempre en `NEUTRAL` (con parpadeo normal),
-y solo la mirada real del rastreo mueve los ojos. Implementado en el orden
-pedido explícitamente: primero [`realtime_voice.py`](v13/realtime_voice.py)
-(terminal, con `--tracking` nuevo — la primera vez que esta vía rastrea el
-rostro en todo el proyecto), después
-[`webrtc_server.py`](v13/webrtc_server.py) (navegador, mismo mecanismo que
-v9/v10 ya validaron para esa pieza).
+la Pico (v12). **Todavía sin análisis de sentimiento**. Implementado en el
+orden pedido explícitamente: primero
+[`realtime_voice.py`](v13/realtime_voice.py) (terminal, con `--tracking`
+nuevo — la primera vez que esta vía rastrea el rostro en todo el
+proyecto), después [`webrtc_server.py`](v13/webrtc_server.py) (navegador,
+mismo mecanismo que v9/v10 ya validaron para esa pieza).
 
-El hilo de rastreo nunca manda un campo `EMOCION` a la Pico — solo
-`LR,UD` — así que el firmware (sin ningún cambio desde v9/v12) nunca sale
-de `NEUTRAL`: el parpadeo periódico sigue con normalidad y ninguna de las
-tres expresiones que fijan la mirada por su cuenta
-(`DUDA`/`PENSATIVO`/`NERVIOSO`) se activa nunca. `main.py`,
-`pico_serial.py` y `face_tracker.py` se copian sin cambios de v12 (cámara
-CSI real con respaldo automático a webcam USB, parámetros calibrados en
-hardware, y `_drenar_entrada()` ya incluido para el bug del buffer USB).
+Cuando el rastreo va integrado en el mismo proceso que la voz, el hilo de
+rastreo nunca manda un campo `EMOCION` a la Pico — solo `LR,UD` — así que
+el firmware nunca sale de `NEUTRAL`: parpadeo normal, sin que
+`DUDA`/`PENSATIVO`/`NERVIOSO` se activen nunca. `main.py`,
+`pico_serial.py` y `face_tracker.py` se copian de v12 (cámara CSI real con
+respaldo a webcam USB, `_drenar_entrada()` para el bug del buffer USB) —
+con un ajuste propio de v13: la cámara baja a 5 FPS (antes 15 en v12) para
+dejar CPU al audio en tiempo real.
 
-**Sin validar todavía en hardware real** — escrito sin una Raspberry Pi 5,
-Pico, cámara ni micrófono/parlante delante, igual situación en la que
-quedaron v10 y v12. Verificado hasta donde este entorno lo permite:
-sintaxis, 26 tests (todos pasando), y arranque real de ambos scripts con
-`--tracking` degradando limpiamente en cascada (cámara CSI → webcam USB →
-sin cámara) sin ninguna excepción no manejada.
+**Validación en hardware real — el hallazgo importante fue de
+arquitectura, no de código.** Voz y rastreo en el mismo proceso funcionan,
+pero por el navegador compiten por CPU con el audio lo bastante como para
+colar eco (carga ~3.25 combinado frente a ~2.1 separado). La arquitectura
+confirmada y recomendada para uso real por navegador son **dos procesos**:
+nuevo [`rastreo_expresiones.py`](v13/rastreo_expresiones.py) (retomado de
+v12, cámara + Pico + ciclo de 10 expresiones) y `webrtc_server.py` **sin**
+`--tracking` (solo voz). El bug de realimentación encontrado durante la
+depuración (mezclar AEC del navegador con el módulo de PipeWire) se
+resolvió sin tocar código — era un error de configuración del sistema, no
+del repo. Detalle completo:
+[`v13/MODIFICACIONES-LOCALES.md`](v13/MODIFICACIONES-LOCALES.md).
 
 ```bash
 cd v13 && source .venv/bin/activate
-python -m pytest tests/ -v                       # 26 tests
-python realtime_voice.py --barge-in --tracking   # Hito A: terminal + rastreo
-python webrtc_server.py --tracking               # Hito B: navegador + rastreo
+python -m pytest tests/ -v                       # 33 tests
+# Recomendado para uso real por navegador (dos procesos):
+python rastreo_expresiones.py                    # terminal 1: rastreo + Pico
+python webrtc_server.py --no-browser             # terminal 2: solo voz
 ```
 
 Ver [`v13/README-v13.md`](v13/README-v13.md) y [`v13/PLAN-v13.md`](v13/PLAN-v13.md).
@@ -497,25 +503,27 @@ Ver [`v13/README-v13.md`](v13/README-v13.md) y [`v13/PLAN-v13.md`](v13/PLAN-v13.
   micrófono, parlante, pantalla ni navegador: no toca voz
 - **v13 necesita todo lo de v10/v11 y v12 a la vez:** Raspberry Pi 5 con
   Pico, cámara CSI (o webcam USB de respaldo), micrófono/parlante USB, y
-  pantalla + navegador si se usa `webrtc_server.py`
+  pantalla + navegador si se usa `webrtc_server.py`. Para uso real, el WiFi
+  necesita el power-save desactivado (si no, WebRTC se desconecta a los
+  ~35s) — ver [`v13/MODIFICACIONES-LOCALES.md`](v13/MODIFICACIONES-LOCALES.md)
 
 ## 📋 Comparativa de versiones
 
 | | v1 | v2 | v3 | v4 | v5 | v6 | v7 | v8 | v9 | v10 | v11 | v12 | v13 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Dónde corre | Mac | Mac | Mac | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** | Mac + **la Pico** | **Raspberry Pi 5** + **la Pico** | **Raspberry Pi 5** (sin Pico) | **Raspberry Pi 5** + **la Pico** | **Raspberry Pi 5** + **la Pico** |
-| Voz en tiempo real | ✅ | ✅ (hereda de v1) | ✅ (hereda de v2) | — (a propósito) | — (a propósito) | — (a propósito) | — (a propósito) | ✅ (hereda de v2) | ✅ (hereda de v8) | ✅ (hereda de v9) | ✅ validado en real (terminal, `--barge-in`) | — (a propósito, ver v12) | 🔄 código completo (hereda de v11) |
-| Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 | n/a | n/a | n/a | n/a | igual que v1 | igual que v1 | igual que v1 (Chromium en la Pi 5) | Validada 3 formas: Firefox+STUN, `BargeInDetector`, y AEC real de PipeWire | n/a (sin voz) | igual que v11, sin validar aún en v13 |
+| Voz en tiempo real | ✅ | ✅ (hereda de v1) | ✅ (hereda de v2) | — (a propósito) | — (a propósito) | — (a propósito) | — (a propósito) | ✅ (hereda de v2) | ✅ (hereda de v8) | ✅ (hereda de v9) | ✅ validado en real (terminal, `--barge-in`) | — (a propósito, ver v12) | ✅ validado en real (hereda de v11) |
+| Cancelación de eco | Navegador (WebRTC) | igual que v1 | igual que v1 | n/a | n/a | n/a | n/a | igual que v1 | igual que v1 | igual que v1 (Chromium en la Pi 5) | Validada 3 formas: Firefox+STUN, `BargeInDetector`, y AEC real de PipeWire | n/a (sin voz) | igual que v11; validada en real tras corregir un bug de configuración (mezcla con PipeWire) |
 | Análisis de emociones | — | ✅ `pysentimiento`, en consola | ✅ (hereda de v2) | — | — | — | — | ✅ (hereda de v2) | ✅ (hereda de v8) | ✅ (hereda de v9) | — (a propósito, ver v11) | — (a propósito, sin voz) | — (a propósito, ver v13) |
-| Rastreo facial (ojos) | — | — | 🔄 falta cámara real | ✅ validado en real | ✅ (hereda de v4) | ✅ (hereda de v5) | ✅ (hereda de v6) | — (a propósito, ver v9) | ✅ validado en real | 🔄 cámara CSI, código completo | — (a propósito, ver v11) | ✅ validado en real (cámara CSI, tras 3 fixes) | 🔄 código completo (hereda de v12) |
-| Cuello (PAN/TILT) | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | n/a (sin Pico) | ✅ (hereda de v6/v7, vía v9) | 🔄 código completo (hereda de v9/v12) |
-| Parpadeo | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | n/a (sin Pico) | ✅ (hereda de v6/v7, vía v9) | 🔄 siempre activo (NEUTRAL fijo), código completo |
+| Rastreo facial (ojos) | — | — | 🔄 falta cámara real | ✅ validado en real | ✅ (hereda de v4) | ✅ (hereda de v5) | ✅ (hereda de v6) | — (a propósito, ver v9) | ✅ validado en real | 🔄 cámara CSI, código completo | — (a propósito, ver v11) | ✅ validado en real (cámara CSI, tras 3 fixes) | ✅ validado en real (hereda de v12, 5fps) |
+| Cuello (PAN/TILT) | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | n/a (sin Pico) | ✅ (hereda de v6/v7, vía v9) | ✅ (hereda de v9/v12) |
+| Parpadeo | — | — | — | — | ✅ validado en real | ✅ (hereda de v5) | ✅ (hereda de v6) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | n/a (sin Pico) | ✅ (hereda de v6/v7, vía v9) | ✅ siempre activo (NEUTRAL fijo), validado en real |
 | Utilidad de estado base | — | — | — | — | — | ✅ validada en real | ✅ (hereda de v6) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | ✅ (hereda de v6/v7) | n/a (sin Pico) | ✅ (hereda de v9) | ✅ (hereda de v9/v12) |
-| Expresiones faciales | — | — | — | — | — | ✅ secuencia fija, validada en real | ✅ (hereda de v6) | ✅ dirigidas por sentimiento (pulso 5s) | ✅ (hereda de v8) | ✅ (hereda de v8) | n/a (sin Pico) | ✅ ciclo fijo cada 5s, desde el cliente (no el firmware) | — (siempre NEUTRAL, a propósito — ver v13) |
+| Expresiones faciales | — | — | — | — | — | ✅ secuencia fija, validada en real | ✅ (hereda de v6) | ✅ dirigidas por sentimiento (pulso 5s) | ✅ (hereda de v8) | ✅ (hereda de v8) | n/a (sin Pico) | ✅ ciclo fijo cada 5s, desde el cliente (no el firmware) | ✅ vía `rastreo_expresiones.py` (proceso aparte); NEUTRAL fijo si va integrado con la voz |
 | Modo dormido por inactividad | — | — | — | — | — | — | — | — | ✅ validado en real | ✅ (hereda de v9) | n/a (sin Pico) | — (a propósito, sin voz que mida actividad) | — (a propósito, ver v13) |
-| Rastreo real + expresiones a la vez | — | — | — | — | — | — | ✅ validado en real | n/a (sin rastreo aún) | ✅ validado en real | 🔄 código completo | n/a | ✅ validado en real, desde el cliente | n/a (expresiones fuera de alcance de v13) |
-| Voz + rastreo a la vez | — | — | — | — | — | — | — | — | — | — | — | — | 🔄 código completo, validación pendiente |
-| Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | 🔄 Código completo, validación pendiente (bloqueada por la cámara) | ✅ Validada (terminal y navegador); falta el ciclo de autoarranque | ✅ Completa y validada en hardware real | 🔄 Código completo, validación pendiente |
+| Rastreo real + expresiones a la vez | — | — | — | — | — | — | ✅ validado en real | n/a (sin rastreo aún) | ✅ validado en real | 🔄 código completo | n/a | ✅ validado en real, desde el cliente | ✅ validado en real, vía `rastreo_expresiones.py` |
+| Voz + rastreo a la vez | — | — | — | — | — | — | — | — | — | — | — | — | ✅ validado en real (arquitectura de dos procesos) |
+| Estado | ✅ Completa | Validación pendiente | Validación pendiente | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | ✅ Completa y validada | 🔄 Código completo, validación pendiente (bloqueada por la cámara) | ✅ Validada (terminal y navegador); falta el ciclo de autoarranque | ✅ Completa y validada en hardware real | ✅ Completa y validada en hardware real |
 
 **Nota sobre independencia:** cada carpeta de versión tiene sus propias copias de
 cualquier código que reutilice de otra (nunca lo importa con una ruta cruzada). Por
@@ -648,17 +656,19 @@ anterior y las demás siguen funcionando.
 │   ├── README-v12.md
 │   ├── PLAN-v12.md
 │   └── MODIFICACIONES-LOCALES.md  # Diario de validación en hardware real (23/08/2026)
-├── v13/                    # Voz + rastreo real, sin sentimiento — junta v11 y v12
+├── v13/                    # Voz + rastreo real, sin sentimiento — VALIDADA (junta v11 y v12)
 │   ├── main.py             # Copia de v12, sin cambios (firmware, dirigido por eventos)
 │   ├── pico_serial.py      # Copia de v12, sin cambios (incluye _drenar_entrada())
-│   ├── face_tracker.py     # Copia de v12, sin cambios (cámara CSI con respaldo USB)
+│   ├── face_tracker.py     # Copia de v12 + FPS_CAMARA=5 (antes 15: deja CPU al audio)
 │   ├── realtime_voice.py   # v11 + --tracking (Hito A: rastreo desde la vía terminal, nuevo)
 │   ├── webrtc_server.py    # v11 + --tracking (Hito B: mismo mecanismo que v9/v10)
+│   ├── rastreo_expresiones.py  # NUEVO: proceso aparte (rastreo+Pico), la vía recomendada con voz
 │   ├── static/index.html   # Copia de v11, sin cambios
 │   ├── estado_base.py, diagnostico_canal.py  # copias sin cambios de v12
-│   ├── tests/              # 26 tests
+│   ├── tests/              # 33 tests
 │   ├── README-v13.md
-│   └── PLAN-v13.md
+│   ├── PLAN-v13.md
+│   └── MODIFICACIONES-LOCALES.md  # Diario de validación en hardware real (23/08/2026)
 ├── docs/
 │   └── RASPBERRY-PI.md     # Especificación headless, aparcada (v10/v11 tomaron otro camino)
 ├── CLAUDE.md               # Contexto técnico completo del proyecto
@@ -701,4 +711,4 @@ ahí, en vez de reinventarlos. Ver [`v3/README-v3.md`](v3/README-v3.md).
 
 ---
 
-**Última actualización:** Agosto 23, 2026 (v13: junta voz en tiempo real de v11 con rastreo facial real de v12, sin sentimiento todavía — código completo, validación pendiente)
+**Última actualización:** Agosto 23, 2026 (v13: validada en hardware real — voz + rastreo funcionando a la vez con una arquitectura de dos procesos, tras corregir un bug de configuración de eco de audio)

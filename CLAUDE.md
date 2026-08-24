@@ -232,12 +232,20 @@ versiones aditivas: cada una construye sobre la anterior sin romperla.
   que `realtime_voice.py` (la vía de terminal) rastrea el rostro en todo el
   proyecto — hasta v9/v10, solo `webrtc_server.py` lo hacía.
   `static/index.html` es copia idéntica de v11: el navegador no necesita
-  saber nada del rastreo, que vive enteramente del lado del servidor. 26
-  tests (heredados de v12 sin cambios: `FaceTracker`/`PicoLink`/
-  `estado_base.py`; sin tests nuevos, porque no hay lógica pura nueva que
-  probar sin hardware — mismo criterio que usó v9 para su propio hilo de
-  rastreo). **Código completo, sin validar todavía en hardware real** —
-  igual situación en la que quedaron v10 y v12 al escribirse.
+  saber nada del rastreo, que vive enteramente del lado del servidor. La
+  validación en hardware real (23/08/2026) encontró un hallazgo de
+  arquitectura más importante que cualquier bug de código: voz y rastreo en
+  el mismo proceso funcionan, pero en la vía de navegador compiten por CPU
+  con el audio en tiempo real (carga ~3.25 combinado frente a ~2.1
+  separado) lo bastante como para colar eco. La combinación validada y
+  recomendada para uso real por navegador es **dos procesos**: nuevo
+  `v13/rastreo_expresiones.py` (retomado de v12 sin cambios, cámara + Pico)
+  y `webrtc_server.py` **sin** `--tracking` (solo voz) — ver la sección de
+  v13 más abajo para el detalle completo. 33 tests, todos pasando sin
+  hardware. **✅ Completa y validada en hardware real**, con la
+  arquitectura de dos procesos: voz por navegador clara, sin eco, con el
+  rastreo y el ciclo de expresiones funcionando a la vez de forma
+  sostenida.
 
 **Regla del proyecto, válida para todas las versiones: ninguna versión importa
 código de otra carpeta de versión.** v2 es una copia de v1 con el añadido de
@@ -1229,28 +1237,57 @@ cámara disponible" de "ACTIVO" — confirmado en el propio arranque de
 prueba, con una clave de API falsa y sin cámara en este entorno.
 
 **`main.py`, `pico_serial.py` y `face_tracker.py` se copian sin ningún
-cambio de v12** (cámara CSI real con respaldo USB, parámetros de detección
-calibrados en hardware, `_drenar_entrada()` ya incluido para el bug del
-buffer USB). `static/index.html` es copia idéntica de v11: el navegador no
-necesita saber nada del rastreo, que vive enteramente del lado del
-servidor — ni STUN ni autoconexión necesitaron tocarse.
+cambio de lógica de v12** (cámara CSI real con respaldo USB, parámetros de
+detección calibrados en hardware, `_drenar_entrada()` ya incluido para el
+bug del buffer USB) — salvo `FPS_CAMARA`, ver más abajo. `static/index.html`
+es copia idéntica de v11: el navegador no necesita saber nada del rastreo,
+que vive enteramente del lado del servidor — ni STUN ni autoconexión
+necesitaron tocarse.
 
-**Cómo se verificó:** sintaxis de los 4 ficheros `.py` del lado cliente, y
-26 tests (heredados sin cambios de v12: 8 de `FaceTracker`, 12 de
-`pico_serial.py`, 4 de `estado_base.py` — sin tests nuevos, porque no hay
-lógica pura nueva que valga la pena probar sin hardware, mismo criterio que
-usó v9 para su propio hilo de rastreo). Arranque real de
-`realtime_voice.py --tracking` y `webrtc_server.py --tracking` con una
-clave de API falsa, sin Pico, sin `picamera2` y sin permiso de cámara en
-este entorno: la cadena de respaldo completa (CSI → USB → sin cámara)
-degrada limpiamente en cada paso, y la conversación de voz sigue su curso
-hasta el punto de necesitar una clave real. **Sin validar todavía en
-hardware real** — igual situación en la que quedaron v10 y v12 al
-escribirse; la pieza con más incertidumbre real, que ningún test sin
-hardware puede confirmar, es si la conversación de voz y el hilo de
-rastreo compiten por CPU de forma perceptible en la Pi 5 real (v9 ya
-confirmó que conviven bien en un Mac, pero no se ha repetido esa
-confirmación aquí). Detalle completo:
+**Validado en hardware real (23/08/2026), con un hallazgo de arquitectura
+más importante que cualquier bug de código.** Combinar voz y rastreo en el
+mismo proceso (el diseño de los Hitos 2-3) funciona, pero en la vía de
+navegador compite por CPU con el audio en tiempo real lo bastante como para
+colar eco. Dos hallazgos concretos:
+
+1. **Bug real, de configuración, no de código: realimentación de audio.**
+   Al depurarlo se había cargado el módulo de cancelación de eco de
+   PipeWire (pensado para la vía de terminal con AEC de sistema,
+   `v11/pipewire-aec/`) a la vez que se desactivaba la cancelación de eco
+   del navegador — dos capas de AEC mal combinadas, más el navegador
+   capturando el nodo virtual de PipeWire en vez del micrófono crudo. Fix:
+   ninguno de código — `static/index.html` ya traía `echoCancellation:
+   true` correcto desde v11. Regla: una sola capa de AEC, nunca mezclar
+   navegador + PipeWire.
+2. **Hallazgo de arquitectura, confirmado con mediciones de carga:**
+   rastreo + voz por navegador en un proceso, ~3.25 de carga; en procesos
+   separados, ~2.1. La arquitectura validada y recomendada para uso real
+   por navegador es **dos procesos**: nuevo
+   [`v13/rastreo_expresiones.py`](v13/rastreo_expresiones.py) (retomado de
+   v12 sin cambios de lógica — cicla las 10 expresiones, no "siempre
+   NEUTRAL", pero sigue sin depender del contenido de la conversación, no
+   es sentimiento) para cámara + Pico, y `webrtc_server.py` **sin**
+   `--tracking` para la voz. El `--tracking` integrado en un solo proceso
+   (Hitos 2-3) se mantiene funcional y documentado como válido para
+   pruebas rápidas o la vía de terminal, pero no como la configuración de
+   producción recomendada para el navegador.
+
+**`FPS_CAMARA` (nuevo en v13, 5 en vez de los 15 de v12) en
+`face_tracker.py`:** v13 comparte CPU con el audio en tiempo real, algo
+que v12 no tenía que considerar; 5fps deja margen sin perder fluidez
+perceptible en el rastreo (la Pico ya suaviza el movimiento internamente).
+
+**Cómo se verificó:** sintaxis de los ficheros `.py` del lado cliente, y 33
+tests (heredados sin cambios de v12: 8 de `FaceTracker`, 12 de
+`pico_serial.py`, 4 de `estado_base.py`, más 7 nuevos para la lógica del
+ciclo en `rastreo_expresiones.py`, migrados de v12). Arranque real de los
+tres scripts con una clave de API falsa, sin Pico, sin `picamera2` y sin
+permiso de cámara: la cadena de respaldo completa (CSI → USB → sin cámara)
+degrada limpiamente en cada caso. **✅ Completa y validada en hardware
+real**, con la arquitectura de dos procesos: voz por navegador clara, sin
+eco, con el rastreo facial y el ciclo de expresiones funcionando a la vez
+de forma sostenida. Detalle completo, con mediciones:
+[`v13/MODIFICACIONES-LOCALES.md`](v13/MODIFICACIONES-LOCALES.md),
 [`v13/README-v13.md`](v13/README-v13.md) y [`v13/PLAN-v13.md`](v13/PLAN-v13.md).
 
 ## Cómo verificar cambios (todas las versiones)

@@ -15,8 +15,9 @@
       más grande, `alpha=0.5, zona_muerta=0`)
 - [x] `estado_base.py`, `diagnostico_canal.py` copiados de `../v12/`, sin
       cambios
-- [x] 24 tests (8 + 12 + 4) copiados y verificados en `v13/.venv`, sin
-      ninguna referencia a v12
+- [x] 24 tests (8 + 12 + 4) copiados y verificados en `v13/.venv` en este
+      hito, sin ninguna referencia a v12 — ampliados a 33 en el Hito 4, con
+      7 tests nuevos para `rastreo_expresiones.py`
 
 ## Hito 2: Voz por terminal + rastreo — `realtime_voice.py` ✅ (completado, primer hito pedido explícito)
 
@@ -80,6 +81,53 @@ una clave de API falsa: sirve la página y llega a
 mensaje de resumen dice correctamente "pedido con --tracking, pero sin
 cámara disponible" en vez de "ACTIVO".
 
+## Hito 4: Validación en hardware real — bug de eco y arquitectura de dos procesos ✅ (completado)
+
+**Lo que se descubrió al validar voz + rastreo a la vez en la Pi 5 real:**
+combinar las dos piezas en un solo proceso (el diseño de los Hitos 2-3) SÍ
+funciona, pero en la vía de navegador compite por CPU con el audio en
+tiempo real lo bastante como para colar eco. Diario completo, con
+mediciones: [`MODIFICACIONES-LOCALES.md`](MODIFICACIONES-LOCALES.md).
+
+- [x] **Bug real, corregido: realimentación de audio.** Causa: durante la
+      depuración se cargó el módulo de cancelación de eco de PipeWire
+      (pensado para la vía de terminal con AEC de sistema) a la vez que se
+      desactivaba la cancelación de eco del navegador — dos capas mal
+      combinadas. Fix: ninguno de código (`static/index.html` ya traía
+      `echoCancellation: true` correcto desde v11); el error fue de
+      configuración del sistema. Regla documentada: una sola capa de AEC,
+      nunca mezclar navegador + PipeWire.
+- [x] **Hallazgo de arquitectura, confirmado con mediciones:** rastreo +
+      voz por navegador en el mismo proceso — carga del sistema ~3.25,
+      frente a ~2.1 con cada pieza en su propio proceso. Arquitectura
+      recomendada para uso real por navegador: `rastreo_expresiones.py`
+      (retomado de v12 sin cambios de lógica, nuevo en v13) como proceso
+      aparte para cámara + Pico, y `webrtc_server.py` **sin** `--tracking`
+      para la voz — cada proceso con su propio recurso.
+- [x] `rastreo_expresiones.py` añadido a v13 (copia de v12, sin cambios de
+      lógica) — la pieza que sí se valida corriendo *junto* a la voz, en
+      su propio proceso. Cicla las 10 expresiones (no "siempre NEUTRAL"),
+      pero sigue sin depender del contenido de la conversación — no es
+      sentimiento, solo el mismo ciclo fijo de v12
+- [x] `FPS_CAMARA` (nuevo, 5 en vez de los 15 de v12) en `face_tracker.py`:
+      v13 comparte CPU con el audio en tiempo real, algo que v12 no tenía
+      que considerar; 5fps deja margen sin perder fluidez perceptible
+- [x] `--tracking` en `realtime_voice.py`/`webrtc_server.py` (rastreo
+      integrado en el mismo proceso de voz) se mantiene sin cambios,
+      documentado ahora como "útil para pruebas rápidas o la vía de
+      terminal", no como la configuración recomendada para producción por
+      navegador
+- [x] 7 tests nuevos para `rastreo_expresiones.py` (idénticos a los de
+      v12, migrados) — 33 tests en total
+- [x] Notas de infraestructura documentadas: WiFi power-save cortando ICE
+      a los ~35s (hay que desactivarlo a nivel de sistema), y que la vía
+      de terminal con AEC de PipeWire y la vía web no deben correr a la vez
+
+**Confirmado en hardware real, con la arquitectura de dos procesos:** voz
+por navegador clara, sin eco ni autointerrupción, con el rastreo facial
+siguiendo un rostro real y la Pico ciclando las 10 expresiones al mismo
+tiempo, de forma sostenida.
+
 ---
 
 ## Definición de listo
@@ -92,25 +140,23 @@ v13.0.0 está lista cuando:
    funcionando en paralelo a la conversación de voz
 3. [x] `webrtc_server.py` (Hito 3, pedido después) con `--tracking`
    funcionando en paralelo a la conversación de voz
-4. [x] La Pico nunca recibe un EMOCION: expresión siempre NEUTRAL, parpadeo
-   normal, mirada real del rastreo sin que nada la fije
-5. [x] 26 tests pasando, sin ninguna referencia a v11/v12
-6. [ ] **Validada con hardware real**: Raspberry Pi 5 con Pico física,
-   cámara (CSI u USB), micrófono/parlante, y una conversación hablada de
-   verdad viendo el rastreo funcionar a la vez — primero por terminal
-   (Hito 2), después por navegador (Hito 3). Pendiente: es lo único que
-   falta para pasar de "código completo" a "completa y validada".
+4. [x] La Pico nunca recibe un EMOCION cuando el rastreo va integrado en
+   el proceso de voz: expresión siempre NEUTRAL, parpadeo normal, mirada
+   real del rastreo sin que nada la fije
+5. [x] 33 tests pasando, sin ninguna referencia a v11/v12
+6. [x] **Validada con hardware real**: bug de realimentación de audio
+   encontrado y corregido (configuración, no código); arquitectura de dos
+   procesos confirmada como la recomendada para voz + rastreo por
+   navegador sin degradar el audio. Ver Hito 4.
 7. [ ] Análisis de sentimiento — explícitamente **fuera de alcance** de
    esta versión, para una v14 posterior.
 
 ---
 
 **Última actualización:** Agosto 23, 2026
-**Estado actual:** v13.0.0 con código completo (Hitos 1-3) y 26 tests, todos
-pasando sin hardware. **Sin validar todavía en la Raspberry Pi 5 real** —
-igual situación en la que quedaron v10 y v12 al escribirse. La pieza con más
-incertidumbre real, que ningún test sin hardware puede confirmar, es si la
-conversación de voz y el hilo de rastreo compiten por CPU de forma
-perceptible en la Pi 5 real — v9 ya confirmó que voz + rastreo conviven bien
-en un Mac, pero no se ha repetido esa confirmación aquí. Versión abierta
-hasta esa validación.
+**Estado actual:** v13.0.0 **completa y validada en hardware real** (Hitos
+1-4), con 33 tests pasando. El hallazgo más importante no fue de código,
+sino de arquitectura: voz y rastreo en el mismo proceso funcionan, pero
+para uso real por navegador la combinación validada es dos procesos
+separados (`rastreo_expresiones.py` + `webrtc_server.py` sin `--tracking`),
+por la competencia de CPU con el audio en tiempo real. Versión cerrada.

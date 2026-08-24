@@ -58,6 +58,14 @@ ESCALA_DETECCION = 0.5   # analizar a mitad de tamaño, más rápido
 ALPHA = 0.5              # filtro EMA: 0 = muy lento/suave, 1 = instantáneo/tembloroso
 ZONA_MUERTA = 0          # grados de cambio mínimo: 0 = enviar siempre (la Pico ya suaviza)
 
+# FPS de la cámara CSI: 5, no los 15 de v12. Hallazgo real al validar v13 en
+# hardware: aquí la cámara comparte CPU con el procesamiento de audio en
+# tiempo real (algo que v12 no tenía que considerar, sin voz), y 15fps competía
+# por CPU con el audio — 5fps sigue de sobra para que el rastreo se vea fluido
+# (la Pico ya suaviza el movimiento internamente) y deja margen para la voz.
+# Ver MODIFICACIONES-LOCALES.md.
+FPS_CAMARA = 5
+
 
 def _mapear(valor: float, in_min: float, in_max: float, out_min: float, out_max: float) -> int:
     return int((valor - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
@@ -157,11 +165,13 @@ def abrir_camara_csi(ancho: int = ANCHO, alto: int = ALTO):
     entregaba `cv2.VideoCapture`, así que el resto del pipeline (`cv2.flip`,
     `FaceTracker.procesar`) no cambia.
 
-    `FrameRate=15`: la cámara por defecto produce más frames de los que el bucle
-    de detección a 1296×972 consume; si se deja a su ritmo nativo, la cola
-    interna de `picamera2` se acumula y el rastreo procesa frames cada vez más
-    viejos (lag creciente — hallazgo real de v12). Limitarla a 15 FPS evita que
-    la cola crezca nunca.
+    `FrameRate=FPS_CAMARA` (5, no los 15 de v12): la cámara por defecto produce
+    más frames de los que el bucle de detección consume; si se deja a su ritmo
+    nativo, la cola interna de `picamera2` se acumula y el rastreo procesa
+    frames cada vez más viejos (lag creciente — hallazgo real de v12). Además,
+    en v13 la cámara comparte CPU con el audio en tiempo real: 5fps deja
+    margen de sobra para eso sin perder fluidez en el rastreo (la Pico ya
+    suaviza el movimiento internamente) — ver FPS_CAMARA más arriba.
     """
     from picamera2 import Picamera2
 
@@ -171,7 +181,7 @@ def abrir_camara_csi(ancho: int = ANCHO, alto: int = ALTO):
     )
     picam2.configure(config)
     picam2.start()
-    picam2.set_controls({"FrameRate": 15})
+    picam2.set_controls({"FrameRate": FPS_CAMARA})
     time.sleep(1)  # margen para que se estabilice la exposición/balance de blancos
     return picam2
 
